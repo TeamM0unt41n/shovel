@@ -67,6 +67,10 @@ pre {
   word-break: break-all;
 }
 
+iframe {
+  zoom: 0.75;
+}
+
 .img-payload {
   max-width: 100%;
   max-height: 256px;
