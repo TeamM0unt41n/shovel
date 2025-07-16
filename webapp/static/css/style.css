@@ -81,3 +81,24 @@ iframe {
 pre code {
   padding: .1875em 0;
 }
+
+@keyframes slidein {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* Progress bar for ticks */
+#progressbar-tick {
+  background-color: #ac80ff;
+  height: 5px;
+  z-index: 10;
+  transform-origin: left center;
+  animation-name: slidein;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  animation-iteration-count: infinite;
+}
+
+#app {
+  padding-top: 5px;
+}
