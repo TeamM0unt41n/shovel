@@ -11,6 +11,7 @@ import Api from './api.js'
 const MAGIC_EXT = {
   'GIF image': 'gif',
   'HTML document': 'html',
+  'ISO Media': 'mp4',
   'JPEG image': 'jpg',
   'PDF document': 'pdf',
   'PNG image': 'png',
@@ -152,16 +153,20 @@ class FlowDisplay {
     if (['gif', 'jpg', 'png', 'svg'].includes(fileType)) {
       const imgEl = document.createElement('img')
       imgEl.classList.add('img-payload')
-      const objectURL = URL.createObjectURL(blob)
-      imgEl.src = objectURL
+      imgEl.src = URL.createObjectURL(blob)
       targetEl.appendChild(imgEl)
+    } else if (fileType === 'mp4') {
+      const videoEl = document.createElement('video')
+      videoEl.classList.add('img-payload')
+      videoEl.controls = true
+      videoEl.src = URL.createObjectURL(blob)
+      targetEl.appendChild(videoEl)
     } else if (fileType === 'pdf') {
       const iframeEl = document.createElement('iframe')
       iframeEl.width = 500
       iframeEl.height = 700
       blob = blob.slice(0, blob.size, 'application/pdf')
-      const objectURL = URL.createObjectURL(blob)
-      iframeEl.src = objectURL
+      iframeEl.src = URL.createObjectURL(blob)
       targetEl.appendChild(iframeEl)
     } else if (fileType === 'html') {
       const iframeEl = document.createElement('iframe')
@@ -169,8 +174,7 @@ class FlowDisplay {
       iframeEl.height = 300
       iframeEl.sandbox = ''
       blob = blob.slice(0, blob.size, 'text/html')
-      const objectURL = URL.createObjectURL(blob)
-      iframeEl.src = objectURL
+      iframeEl.src = URL.createObjectURL(blob)
       targetEl.appendChild(iframeEl)
     }
   }
