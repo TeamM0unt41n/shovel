@@ -77,6 +77,23 @@ class FlowDisplay {
   }
 
   /**
+   * Pretty print size
+   * @param {Number} size Size in bytes
+   * @returns Pretty string representation
+   */
+  pprintSize (size) {
+    if (size < 1024) {
+      return `${size} B`
+    }
+    size = size / 1024
+    if (size < 1024) {
+      return `${size.toFixed(2)} kiB`
+    }
+    size = size / 1024
+    return `${size.toFixed(2)} MiB`
+  }
+
+  /**
    * Update fileinfo cards current view in application protocol card
    */
   updateAppFileinfoViews () {
@@ -240,7 +257,7 @@ class FlowDisplay {
     // Flow card
     document.getElementById('display-flow-time').textContent = `From ${formatedDateStart}\n  to ${formatedDateEnd}`
     document.getElementById('display-flow-time').title = `${flow.flow.ts_start} - ${flow.flow.ts_end}`
-    document.getElementById('display-flow-pkt').textContent = `${flow.flow.proto} flow from ${flow.flow.src_ipport} to ${flow.flow.dest_ipport}\n──► ${flow.flow.pkts_toserver} packets (${flow.flow.bytes_toserver} bytes)\n◀── ${flow.flow.pkts_toclient} packets (${flow.flow.bytes_toclient} bytes)`
+    document.getElementById('display-flow-pkt').textContent = `${flow.flow.proto} flow from ${flow.flow.src_ipport} to ${flow.flow.dest_ipport}\n──► ${flow.flow.pkts_toserver} packets (${this.pprintSize(flow.flow.bytes_toserver)})\n◀── ${flow.flow.pkts_toclient} packets (${this.pprintSize(flow.flow.bytes_toclient)})`
     document.getElementById('display-flow-pcap').href = flow.flow.pcap_filename
     document.getElementById('display-flow-pcap').parentNode.classList.toggle('d-none', !flow.flow.pcap_filename)
     if (this.tickLength > 0) {
