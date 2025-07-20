@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS "flow" (
     dest_port INTEGER,
     dest_ipport TEXT GENERATED ALWAYS
         AS (dest_ip || IIF(dest_port IS NULL, '', ':' || dest_port)),
-    pcap_filename TEXT,
     proto TEXT NOT NULL,
     app_proto TEXT,
     metadata TEXT,

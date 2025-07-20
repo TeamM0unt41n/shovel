@@ -13,6 +13,8 @@ fi
 
 # Arguments override default Suricata configuration,
 # see https://github.com/OISF/suricata/blob/suricata-7.0.5/suricata.yaml.in
+# and `suricata --dump-config`
+mkdir -p suricata/output/pcaps
 eval "$SURICATA_CMD" \
     --runmode=single --no-random -k none \
     -l suricata/output \
@@ -20,13 +22,16 @@ eval "$SURICATA_CMD" \
     --set plugins.0=suricata/libeve_sqlite_output.so \
     --set outputs.0.fast.enabled=no \
     --set outputs.1.eve-log.filetype=sqlite \
-    --set outputs.1.eve-log.pcap-file=${PCAP_FILE:=true} \
     --set outputs.1.eve-log.types.3.http.dump-all-headers=both \
     --set outputs.1.eve-log.types.6.files.force-hash.0=sha256 \
     --set outputs.1.eve-log.types.21.dhcp.extended=yes \
     --set outputs.1.eve-log.types.23.mqtt.passwords=yes \
     --set outputs.1.eve-log.types.25.pgsql.enabled=yes \
     --set outputs.1.eve-log.types.25.pgsql.passwords=yes \
+    --set outputs.5.pcap-log.enabled=${PCAP_LOG:=yes} \
+    --set outputs.5.pcap-log.limit=33554432 \
+    --set outputs.5.pcap-log.compression=lz4 \
+    --set outputs.5.pcap-log.dir=pcaps \
     --set outputs.9.file-store.enabled=yes \
     --set outputs.9.file-store.force-filestore=yes \
     --set outputs.9.file-store.stream-depth=0 \

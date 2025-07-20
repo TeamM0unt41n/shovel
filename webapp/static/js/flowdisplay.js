@@ -262,8 +262,7 @@ class FlowDisplay {
     document.getElementById('display-flow-time').textContent = `From ${formatedDateStart}\n  to ${formatedDateEnd}`
     document.getElementById('display-flow-time').title = `${flow.flow.ts_start} - ${flow.flow.ts_end}`
     document.getElementById('display-flow-pkt').textContent = `${flow.flow.proto} flow from ${flow.flow.src_ipport} to ${flow.flow.dest_ipport}\n──► ${flow.flow.pkts_toserver} packets (${this.pprintSize(flow.flow.bytes_toserver)})\n◀── ${flow.flow.pkts_toclient} packets (${this.pprintSize(flow.flow.bytes_toclient)})`
-    document.getElementById('display-flow-pcap').href = flow.flow.pcap_filename
-    document.getElementById('display-flow-pcap').parentNode.classList.toggle('d-none', !flow.flow.pcap_filename)
+    document.getElementById('display-flow-pcap').href = `/api/flow/${flowId}/pcap`
     if (this.tickLength > 0) {
       document.getElementById('display-flow-tick').classList.remove('d-none')
       const tick = ((flow.flow.ts_start / 1000000 - this.startTs) / this.tickLength).toFixed(3)

@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 # Copyright (C) 2023-2024  ANSSI
+# Copyright (C) 2025  A. Iooss
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import base64
 import contextlib
+import glob
 import json
 import time
+from pathlib import Path
 
 import aiosqlite
 from starlette.applications import Starlette
 from starlette.config import Config
 from starlette.datastructures import CommaSeparatedStrings
 from starlette.exceptions import HTTPException
-from starlette.responses import JSONResponse
+from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -131,8 +134,7 @@ async def api_flow_get(request):
     cursor = await eve_database.execute(
         (
             "SELECT id, ts_start, ts_end, src_ipport, dest_ipport, dest_port, "
-            "pcap_filename, proto, app_proto, metadata, extra_data "
-            "FROM flow WHERE id = ?"
+            "proto, app_proto, metadata, extra_data FROM flow WHERE id = ?"
         ),
         [flow_id],
     )
@@ -180,6 +182,33 @@ async def api_flow_get(request):
     result["anomaly"] = [row_to_dict(f) for f in rows]
 
     return JSONResponse(result, headers={"Cache-Control": "max-age=86400"})
+
+
+async def api_flow_pcap_get(request):
+    flow_id = request.path_params["flow_id"]
+
+    # Query flow start timestamp from database
+    cursor = await eve_database.execute(
+        "SELECT ts_start FROM flow WHERE id = ?", [flow_id]
+    )
+    flow = await cursor.fetchone()
+    if not flow:
+        raise HTTPException(404)
+    flow_us = flow["ts_start"] // 1000
+
+    # Serve corresponding pcap, found using timestamp
+    flow_pcap_path = ""
+    for pcap_path in sorted(glob.glob("../suricata/output/pcaps/*.*")):
+        pcap_us = int(pcap_path.replace(".lz4", "").rsplit(".", 1)[-1])
+        if pcap_us > flow_us:
+            break  # take previous one
+        flow_pcap_path = pcap_path
+    if not flow_pcap_path:
+        raise HTTPException(404)
+    filename = f"{flow_id}_" + Path(flow_pcap_path).name
+    return FileResponse(
+        flow_pcap_path, content_disposition_type="attachment", filename=filename
+    )
 
 
 async def api_flow_raw_get(request):
@@ -341,11 +370,11 @@ app = Starlette(
         Route("/", index),
         Route("/api/flow", api_flow_list),
         Route("/api/flow/{flow_id:int}", api_flow_get),
+        Route("/api/flow/{flow_id:int}/pcap", api_flow_pcap_get),
         Route("/api/flow/{flow_id:int}/raw", api_flow_raw_get),
         Route("/api/replay-http/{flow_id:int}", api_replay_http),
         Route("/api/replay-raw/{flow_id:int}", api_replay_raw),
         Mount("/static", StaticFiles(directory="static")),
-        Mount("/input_pcaps", StaticFiles(directory="../input_pcaps", check_dir=False)),
         Mount(
             "/filestore",
             StaticFiles(directory="../suricata/output/filestore", check_dir=False),
