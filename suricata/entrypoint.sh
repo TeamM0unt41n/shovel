@@ -15,8 +15,8 @@ fi
 # see https://github.com/OISF/suricata/blob/suricata-7.0.5/suricata.yaml.in
 eval "$SURICATA_CMD" \
     --runmode=single --no-random -k none \
-    -S suricata/rules/suricata.rules \
     -l suricata/output \
+    --set default-rule-path=suricata/rules \
     --set plugins.0=suricata/libeve_sqlite_output.so \
     --set outputs.0.fast.enabled=no \
     --set outputs.1.eve-log.filetype=sqlite \
@@ -27,7 +27,6 @@ eval "$SURICATA_CMD" \
     --set outputs.1.eve-log.types.23.mqtt.passwords=yes \
     --set outputs.1.eve-log.types.25.pgsql.enabled=yes \
     --set outputs.1.eve-log.types.25.pgsql.passwords=yes \
-    --set outputs.7.stats.enabled=no \
     --set outputs.9.file-store.enabled=yes \
     --set outputs.9.file-store.force-filestore=yes \
     --set outputs.9.file-store.stream-depth=0 \
@@ -46,4 +45,5 @@ eval "$SURICATA_CMD" \
     --set flow-timeouts.tcp.emergency-established=60 \
     --set flow-timeouts.tcp.closed=5 \
     --set flow-timeouts.tcp.emergency-closed=5 \
+    --set security.lua.allow-rules=yes \
     "$@"
