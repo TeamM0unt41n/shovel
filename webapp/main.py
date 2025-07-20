@@ -196,7 +196,7 @@ async def api_flow_raw_get(request):
         data = base64.b64encode(r["blob"]).decode()
         result.append({"server_to_client": r["server_to_client"], "data": data})
 
-    return JSONResponse(result)
+    return JSONResponse(result, headers={"Cache-Control": "max-age=86400"})
 
 
 async def api_replay_http(request):
@@ -227,7 +227,7 @@ async def api_replay_http(request):
             if not sha256:
                 raise HTTPException(500)
 
-            # Load file
+            # Load filedata
             path = f"../suricata/output/filestore/{sha256[:2]}/{sha256}"
             with open(path, "rb") as f:
                 req["rq_content"] = f.read()
