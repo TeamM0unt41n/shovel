@@ -363,7 +363,10 @@ class FlowDisplay {
                 renderView.appendChild(renderCodeEl)
               }
             })
-            blob.bytes().then(b => { hexView.textContent = this.renderHexDump(b) })
+            blob.arrayBuffer().then(arrayBuf => {
+              const b = new Uint8Array(arrayBuf)
+              hexView.textContent = this.renderHexDump(b)
+            })
           })
 
           // Clone fileinfo template and fill with content
