@@ -35,8 +35,6 @@ services:
     image: anssi/shovel-webapp:dev
     restart: always
     volumes:
-      # You may remove the next line to prevent users from downloading pcaps.
-      - "./input_pcaps:/input_pcaps:ro"
       # Write access is required in SQLite `mode=ro` as readers need to record
       # a mark in the WAL file. If you need to make the volume read-only, then
       # use `immutable=1` parameter in SQLite databases URI. In immutable mode,
