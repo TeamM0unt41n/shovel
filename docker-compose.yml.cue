@@ -7,7 +7,6 @@ import N "novara.m0unt41n.ch:networking"
 services: {
 	suricata: {
 		build: "./suricata"
-		image: "anssi/shovel-suricata:dev"
 		volumes: [
 			"./input_pcaps:/input_pcaps:ro",
 			"./suricata/rules:/suricata/rules:ro",
@@ -35,7 +34,6 @@ services: {
 	}
 	webapp: {
 		build:   "./webapp"
-		image:   "anssi/shovel-webapp:dev"
 		restart: "always"
 		volumes: [
 			// Write access is required in SQLite `mode=ro` as readers need to record
@@ -53,6 +51,7 @@ services: {
 			"traefik.enable=true",
 		]
 		env_file: [".env"]
+		networks: ["novara"]
 	}
 }
 //pcap-broker:
@@ -72,3 +71,5 @@ services: {
 //        ssh root@vulnbox -oStrictHostKeyChecking=no
 //        tcpdump -U --immediate-mode -ni game -s 65535 -w - not tcp port 22
 //    LISTEN_ADDRESS: 0.0.0.0:4242
+
+networks: novara: null
