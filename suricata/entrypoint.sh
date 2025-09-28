@@ -18,7 +18,7 @@ mkdir -p suricata/output/pcaps
 eval "$SURICATA_CMD" \
     --runmode=single --no-random -k none \
     -l suricata/output \
-    --set default-rule-path=suricata/rules \
+    -c /suricata/suricata.yaml \
     --set plugins.0=suricata/libeve_sqlite_output.so \
     --set outputs.0.fast.enabled=no \
     --set outputs.1.eve-log.filetype=sqlite \
