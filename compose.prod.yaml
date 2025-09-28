@@ -6,25 +6,27 @@ services:
       - ./suricata/rules:/suricata/rules:ro
       - ./suricata/output:/suricata/output:rw
     # Mode A: pcap replay mode (slower, for archives replay or rootless CTF)
-    command: -r /input_pcaps
+    #command: -r /input_pcaps
     # Add `--pcap-file-continuous` to watch for new pcap in folder.
 
-		# Mode B: capture interface (fast, requires root on vulnbox and in Docker)
-		# Drastically reduces ingest delay, but requires to setup traffic mirroring
-		# between the vulnbox game interface and a team server.
-		#command: -i tun5
-		#cap_add:
-		#  - NET_ADMIN
-		#network_mode: "host"
+    # Mode B: capture interface (fast, requires root on vulnbox and in Docker)
+    # Drastically reduces ingest delay, but requires to setup traffic mirroring
+    # between the vulnbox game interface and a team server.
+    #command: -i tun5
+    #cap_add:
+    #  - NET_ADMIN
+    #network_mode: "host"
 
-		# Mode C: PCAP-over-IP (fast, requires root on vulnbox)
-		# Connects to a PCAP-over-IP server, such as pcap-broker to read PCAP data.
-		#command: -r /dev/stdin
-		#restart: always
-		#depends_on:
-		#  - pcap-broker
-		#environment:
-		#  - PCAP_OVER_IP=pcap-broker:4242
+    # Mode C: PCAP-over-IP (fast, requires root on vulnbox)
+    # Connects to a PCAP-over-IP server, such as pcap-broker to read PCAP data.
+    command: -r /dev/stdin
+    restart: always
+    depends_on:
+      - pcap-broker
+    environment:
+      - PCAP_OVER_IP=pcap-broker:4242
+    networks:
+      - novara
 
   webapp:
     build: ./webapp
@@ -42,5 +44,6 @@ services:
       - .env
     networks:
       - novara
+
 networks:
   novara: null

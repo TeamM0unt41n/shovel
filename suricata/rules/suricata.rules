@@ -52,6 +52,11 @@ alert ip any any -> any any (msg: "A saarCTF flag was sent to client (base64)"; 
 alert ip any any -> any any (msg: "A saarCTF flag was sent to client (base64)"; flow:to_client; content: "TQUFSe"; pcre: "/(TQUFSe[A-Za-z\d]{43}f)/, flow:match"; distance: -6; metadata: tag FLAG OUT B64, color danger; flowint: tag_FLAG_OUT_B64, +, 1; sid: 66;)
 alert ip any any -> any any (msg: "A saarCTF flag was placed in our services (probably by checkers)"; flow:to_server; content: "SAAR"; pcre: "/(SAAR\{[A-Za-z0-9-_]{32}\})/, flow:match"; distance: -4; metadata: tag FLAG IN, color success; flowint: tag_FLAG_IN, +, 1; sid: 67;)
 alert ip any any -> any any (msg: "A saarCTF flag was placed in our services (probably by checkers, URL encoded)"; flow:to_server; content: "SAAR%7B"; pcre: "/(SAAR%7B[A-Za-z0-9-_]{32}%7D)/, flow:match"; distance: -7; metadata: tag FLAG IN, color success; flowint: tag_FLAG_IN, +, 1; sid: 68;)
+alert ip any any -> any any (msg: "A ECSC25 flag was sent to client"; flow:to_client; content: "ECSC{"; pcre: "/(ECSC\{[A-Za-z0-9-_]{32}\})/, flow:match"; distance: -5; metadata: tag FLAG OUT, color danger; flowint: tag_FLAG_OUT, +, 1; sid: 69;)
+alert ip any any -> any any (msg: "A ECSC25 flag was sent to client"; flow:to_client; file.data; content: "ECSC{"; pcre: "/(ECSC\{[A-Za-z0-9-_]{32}\})/, flow:match"; distance: -5; metadata: tag FLAG OUT, color danger; flowint: tag_FLAG_OUT, +, 1; sid: 70;)
+alert ip any any -> any any (msg: "A ECSC25 flag was sent to client (base64)"; flow:to_client; content: "RUNTQ3"; pcre: "/(RUNTQ3[A-Za-z0-9\/+]{44}0[K,=]{1})/, flow:match"; distance: -6; metadata: tag FLAG OUT B64, color danger; flowint: tag_FLAG_OUT_B64, +, 1; sid: 71;)
+alert ip any any -> any any (msg: "A ECSC25 flag was sent to client (base64)"; flow:to_client; file.data; content: "RUNTQ3"; pcre: "/(RUNTQ3[A-Za-z0-9\/+]{44}0[K,=]{1})/, flow:match"; distance: -6; metadata: tag FLAG OUT B64, color danger; flowint: tag_FLAG_OUT_B64, +, 1; sid: 72;)
+alert ip any any -> any any (msg: "A ECSC25 flag was send to server (probably by checkers)"; flow:to_server; content: "ECSC{"; pcre: "/(ECSC\{[A-Za-z0-9-_]{32}\})/, flow:match"; distance: -5; metadata: tag FLAG IN, color success; flowint: tag_FLAG_IN, +, 1; sid: 73;)
 
 # Tag file formats using libmagic (sid 1001-2000)
 # As libmagic calls are slow, please use a content filter before.
