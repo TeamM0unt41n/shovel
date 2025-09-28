@@ -1,0 +1,25 @@
+include:
+  - compose.prod.yaml
+
+services:
+  traefik:
+    image: traefik:3.5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --entrypoints.web.address=:80
+      - --accesslog=true
+      - --accesslog.addInternals=true
+    ports:
+      - "80:80"
+      - "8080:8080"
+    networks:
+      - novara
+    labels:
+      - owner=novara-backend
+    restart: unless-stopped
+  
+networks:
+  novara: null
