@@ -6,7 +6,7 @@ services:
       - ./suricata/rules:/suricata/rules:ro
       - ./suricata/output:/suricata/output:rw
     # Mode A: pcap replay mode (slower, for archives replay or rootless CTF)
-    command: -r /input_pcaps
+    command: -r /input_pcaps --pcap-file-continuous
     # Add `--pcap-file-continuous` to watch for new pcap in folder.
 
     # Mode B: capture interface (fast, requires root on vulnbox and in Docker)
