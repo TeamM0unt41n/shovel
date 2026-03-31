@@ -33,10 +33,13 @@ impl Config {
     }
 }
 
+struct EveEvent {
+    type_: String,
+    data: String,
+}
+
 struct Context {
-    tx: mpsc::SyncSender<String>,
-    count: usize,
-    count_drop: usize,
+    tx: mpsc::SyncSender<EveEvent>,
 }
 
 extern "C" fn output_init(_conf: *const c_void, threaded: bool, data: *mut *mut c_void) -> c_int {
@@ -51,14 +54,10 @@ extern "C" fn output_init(_conf: *const c_void, threaded: bool, data: *mut *mut 
     let (tx, rx) = mpsc::sync_channel(config.buffer);
     let mut database_client = match database::Database::new(&config.database_url, rx) {
         Ok(db) => db,
-        Err(err) => panic!("Failed to open database {}: {err:?}", config.database_url),
+        Err(err) => panic!("Failed to open database: {err:?}"),
     };
     std::thread::spawn(move || database_client.run());
-    let context_ptr = Box::into_raw(Box::new(Context {
-        tx,
-        count: 0,
-        count_drop: 0,
-    }));
+    let context_ptr = Box::into_raw(Box::new(Context { tx }));
 
     unsafe {
         *data = context_ptr.cast();
@@ -68,22 +67,18 @@ extern "C" fn output_init(_conf: *const c_void, threaded: bool, data: *mut *mut 
 
 extern "C" fn output_deinit(data: *const c_void) {
     let context = unsafe { Box::from_raw(data as *mut Context) };
-    log::info!(
-        "SQL Eve output finished: count={} drop={}",
-        context.count,
-        context.count_drop
-    );
+    log::debug!("SQL Eve output finished");
     std::mem::drop(context);
 }
 
 extern "C" fn output_write(
     buffer: *const c_char,
     buffer_len: c_int,
-    data: *const c_void,
-    _thread_data: *const c_void,
+    init_data: *const c_void,
+    _thread_data: *mut c_void,
 ) -> c_int {
     // Handle FFI arguments
-    let context = unsafe { &mut *(data as *mut Context) };
+    let context = unsafe { init_data.cast::<Context>().as_ref() }.expect("null init_data pointer");
     let text = unsafe {
         str::from_utf8_unchecked(
             std::ffi::CStr::from_bytes_with_nul_unchecked(std::slice::from_raw_parts(
@@ -94,13 +89,26 @@ extern "C" fn output_write(
         )
     };
 
-    // Send text buffer to database thread
-    if let Err(_err) = context.tx.send(text.to_owned()) {
-        context.count_drop = context.count_drop.saturating_add(1);
-        log::debug!("Failed to send Eve record to database thread");
-        return -1;
+    // Zero-copy extraction of the event_type
+    let event_type = match text.split_once(r#","event_type":""#) {
+        Some((_, p)) => p,
+        None => text
+            .split(r#", "event_type": ""#)
+            .nth(1)
+            .unwrap_or_default(),
     }
-    context.count = context.count.saturating_add(1);
+    .split('"')
+    .next()
+    .unwrap_or("unknown");
+
+    // Send event to database thread
+    let event = EveEvent {
+        type_: event_type.to_owned(),
+        data: text.to_owned(),
+    };
+    if let Err(err) = context.tx.send(event) {
+        panic!("Database thread is no longer alive: {err:?}");
+    }
     0
 }
 

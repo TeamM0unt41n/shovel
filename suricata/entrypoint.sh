@@ -37,6 +37,7 @@ eval "$SURICATA_CMD" \
     --set outputs.3.pcap-log.compression=lz4 \
     --set outputs.3.pcap-log.dir=pcaps \
     --set outputs.5.stats.enabled=no \
+    --set logging.outputs.1.file.enabled=no \
     --set app-layer.protocols.pgsql.enabled=yes \
     --set app-layer.protocols.modbus.enabled=yes \
     --set app-layer.protocols.dnp3.enabled=yes \

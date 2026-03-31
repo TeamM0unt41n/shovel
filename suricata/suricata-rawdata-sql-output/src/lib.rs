@@ -42,8 +42,6 @@ struct Rawdata {
 
 struct Context {
     tx: mpsc::SyncSender<Rawdata>,
-    count: usize,
-    count_drop: usize,
     flow_packet_count: HashMap<i64, i64>,
 }
 
@@ -52,32 +50,32 @@ extern "C" fn packet_log(
     thread_data: *mut *mut c_void,
     pkt: *const ffi::Packet,
 ) -> c_int {
-    // Handle FFI arguments
-    let pkt = unsafe { &*pkt };
+    // Handle FFI arguments, Suricata owns the data
+    let pkt = unsafe { pkt.as_ref() }.expect("null pkt pointer");
     let data = unsafe { std::slice::from_raw_parts(pkt.payload, pkt.payload_len as usize) };
-    let flow = unsafe { &*pkt.flow };
+    let flow = unsafe { pkt.flow.as_ref() }.expect("null flow pointer");
     let flow_id = ffi::flow_get_id(flow);
     let direction = unsafe { ffi::FlowGetPacketDirection(flow, pkt) };
 
     // Get payload count for this flow
-    let context = unsafe { &mut *thread_data.cast::<Context>() };
+    let context =
+        unsafe { thread_data.cast::<Context>().as_mut() }.expect("null thread_data pointer");
     let packet_count = *context.flow_packet_count.get(&flow_id).unwrap_or(&0);
     context
         .flow_packet_count
         .insert(flow_id, packet_count.saturating_add(1));
 
+    // Copying data here is less costly than not batching database transactions
     let rawdata = Rawdata {
         data: data.to_vec(),
         flow_id,
         packet_count,
         direction,
     };
-    if let Err(_err) = context.tx.send(rawdata) {
-        context.count_drop = context.count_drop.saturating_add(1);
-        log::debug!("Failed to send rawdata to database thread");
-        return -1;
+    // Block until there is space in database buffer
+    if let Err(err) = context.tx.send(rawdata) {
+        panic!("Database thread is no longer alive: {err:?}");
     }
-    context.count = context.count.saturating_add(1);
     0
 }
 
@@ -103,13 +101,11 @@ extern "C" fn packet_thread_init(
     let (tx, rx) = mpsc::sync_channel(config.buffer);
     let mut database_client = match database::Database::new(&config.database_url, rx) {
         Ok(db) => db,
-        Err(err) => panic!("Failed to open database {}: {err:?}", config.database_url),
+        Err(err) => panic!("Failed to open database: {err:?}"),
     };
     std::thread::spawn(move || database_client.run());
     let context_ptr = Box::into_raw(Box::new(Context {
         tx,
-        count: 0,
-        count_drop: 0,
         flow_packet_count: HashMap::new(),
     }));
 
@@ -121,11 +117,7 @@ extern "C" fn packet_thread_init(
 
 extern "C" fn packet_thread_deinit(_thread_vars: *mut *mut c_void, thread_data: *mut *mut c_void) {
     let context = unsafe { Box::from_raw(thread_data.cast::<Context>()) };
-    log::info!(
-        "SQL rawdata output finished: count={} drop={}",
-        context.count,
-        context.count_drop
-    );
+    log::debug!("SQL rawdata output finished");
     std::mem::drop(context);
 }
 

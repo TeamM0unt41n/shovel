@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use crate::Rawdata;
-use sqlx::{Connection, Transaction};
+use sqlx::Connection;
+use std::str::FromStr;
 
 const SQL_SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS rawdata (
@@ -14,28 +15,17 @@ CREATE TABLE IF NOT EXISTS rawdata (
 );
 CREATE INDEX IF NOT EXISTS rawdata_flow_id_idx ON rawdata(flow_id);";
 
-/// Add one raw payload to the SQL database
-async fn write_rawdata(
-    transaction: &mut Transaction<'_, sqlx::Any>,
-    rd: &Rawdata,
-) -> Result<u64, sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO rawdata (flow_id, count, direction, data) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
-    )
-    .bind(rd.flow_id)
-    .bind(rd.packet_count)
-    .bind(rd.direction)
-    .bind(&rd.data)
-    .execute(&mut **transaction)
-    .await
-    .map(|r| r.rows_affected())
+enum DatabaseConnection {
+    Sqlite(sqlx::sqlite::SqliteConnection),
+    Postgres(sqlx::postgres::PgConnection),
 }
 
 pub struct Database {
     runtime: Option<tokio::runtime::Runtime>,
-    conn: Option<sqlx::AnyConnection>,
+    conn: Option<DatabaseConnection>,
     rx: std::sync::mpsc::Receiver<Rawdata>,
-    count: u64,
+    count_batch: usize,
+    count_incoming: usize,
     count_inserted: u64,
 }
 
@@ -47,53 +37,104 @@ impl Database {
             .enable_all()
             .build()
             .unwrap();
-        sqlx::any::install_default_drivers();
         let conn = runtime.block_on(async {
-            let mut conn = {
-                // wait for database ready
-                let mut maybe_conn: Option<sqlx::AnyConnection> = None;
-                while maybe_conn.is_none() {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    maybe_conn = sqlx::AnyConnection::connect(url).await.ok();
-                }
-                maybe_conn.unwrap() // won't panic
-            };
-            if conn.backend_name() == "SQLite" {
-                sqlx::raw_sql("PRAGMA journal_mode = WAL; PRAGMA synchronous = off")
-                    .execute(&mut conn)
-                    .await?;
+            if url.starts_with("sqlite:") {
+                let options = sqlx::sqlite::SqliteConnectOptions::from_str(url)?
+                    .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                    .synchronous(sqlx::sqlite::SqliteSynchronous::Off);
+                let mut conn = sqlx::sqlite::SqliteConnection::connect_with(&options).await?;
+                sqlx::raw_sql(SQL_SCHEMA).execute(&mut conn).await?;
+                Ok(DatabaseConnection::Sqlite(conn))
+            } else if url.starts_with("postgres:") {
+                // Wait for database to be ready
+                let mut conn = {
+                    let mut maybe_conn: Option<sqlx::postgres::PgConnection> = None;
+                    while maybe_conn.is_none() {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        maybe_conn = sqlx::postgres::PgConnection::connect(url).await.ok();
+                    }
+                    maybe_conn.unwrap() // won't panic
+                };
+                sqlx::raw_sql(SQL_SCHEMA).execute(&mut conn).await?;
+                Ok(DatabaseConnection::Postgres(conn))
+            } else {
+                Err(sqlx::Error::Configuration(
+                    "Only sqlite and postgres database schemes are supported".into(),
+                ))
             }
-            sqlx::raw_sql(SQL_SCHEMA).execute(&mut conn).await?;
-            Ok::<sqlx::AnyConnection, sqlx::Error>(conn)
         })?;
         Ok(Self {
             runtime: Some(runtime),
             conn: Some(conn),
             rx,
-            count: 0,
+            count_batch: 0,
+            count_incoming: 0,
             count_inserted: 0,
         })
     }
 
     /// Main worker loop
     async fn batch_write_rawdata(&mut self) -> Result<(), sqlx::Error> {
-        // Wait for first raw payload to create a transaction
         while let Ok(rawdata) = self.rx.recv() {
-            let mut transaction = self.conn.as_mut().unwrap().begin().await?;
-            self.count = self.count.saturating_add(1);
-            let inserted = write_rawdata(&mut transaction, &rawdata).await?;
+            let mut batch = vec![rawdata];
+            batch.extend(self.rx.try_iter()); // Drain channel
+            self.count_batch = self.count_batch.saturating_add(1);
+            self.count_incoming = self.count_incoming.saturating_add(batch.len());
+
+            // Insert batch in database
+            let inserted = match self.conn.as_mut().unwrap() {
+                DatabaseConnection::Sqlite(conn) => {
+                    let mut transaction = conn.begin().await?;
+                    let mut inserted = 0u64;
+                    for rd in batch {
+                        let count = sqlx::query(
+                            "INSERT INTO rawdata (flow_id, count, direction, data) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
+                        )
+                        .bind(rd.flow_id)
+                        .bind(rd.packet_count)
+                        .bind(rd.direction)
+                        .bind(&rd.data)
+                        .execute(&mut *transaction)
+                        .await
+                        .map(|r| r.rows_affected())?;
+                        inserted = inserted.saturating_add(count);
+                    }
+                    transaction.commit().await?;
+                    inserted
+                }
+                DatabaseConnection::Postgres(conn) => {
+                    let mut transaction = conn.begin().await?;
+                    let batch_flow_id: Vec<i64> = batch.iter().map(|t| t.flow_id).collect();
+                    let batch_packet_count: Vec<i64> =
+                        batch.iter().map(|t| t.packet_count).collect();
+                    let batch_direction: Vec<i32> = batch.iter().map(|t| t.direction).collect();
+                    let batch_data: Vec<&[u8]> = batch.iter().map(|t| t.data.as_slice()).collect();
+                    let inserted = sqlx::query(
+                            "INSERT INTO rawdata (flow_id, count, direction, data) SELECT * FROM UNNEST($1::int8[], $2::int8[], $3::int4[], $4::bytea[]) ON CONFLICT DO NOTHING",
+                        )
+                        .bind(&batch_flow_id)
+                        .bind(&batch_packet_count)
+                        .bind(&batch_direction)
+                        .bind(&batch_data)
+                        .execute(&mut *transaction)
+                        .await
+                        .map(|r| r.rows_affected())?;
+                    transaction.commit().await?;
+                    inserted
+                }
+            };
+            log::debug!("Inserted {inserted} rows");
             self.count_inserted = self.count_inserted.saturating_add(inserted);
-
-            // Insert currently pending raw payloads
-            while let Ok(rawdata) = self.rx.try_recv() {
-                self.count = self.count.saturating_add(1);
-                let inserted = write_rawdata(&mut transaction, &rawdata).await?;
-                self.count_inserted = self.count_inserted.saturating_add(inserted);
-            }
-
-            transaction.commit().await?;
         }
-        self.conn.take().unwrap().close().await?;
+        match self.conn.take() {
+            Some(DatabaseConnection::Sqlite(c)) => {
+                c.close().await?;
+            }
+            Some(DatabaseConnection::Postgres(c)) => {
+                c.close().await?;
+            }
+            None => {}
+        }
         Ok(())
     }
 
@@ -103,12 +144,13 @@ impl Database {
         let rt = self.runtime.take().unwrap();
         rt.block_on(async {
             if let Err(err) = self.batch_write_rawdata().await {
-                log::error!("Failed to write to database: {err:?}");
+                log::error!("Database thread ended prematurely: {err:?}");
             }
         });
         log::info!(
-            "Database thread finished: count={} inserted={}",
-            self.count,
+            "Database thread finished: batch={} incoming={} inserted={}",
+            self.count_batch,
+            self.count_incoming,
             self.count_inserted
         );
     }

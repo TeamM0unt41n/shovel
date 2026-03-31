@@ -6,6 +6,8 @@ mod ffi;
 
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::fmt::Write as _;
+use std::io::Write as _;
 use std::os::raw::{c_int, c_void};
 use std::sync::mpsc;
 use suricata_sys::sys::{SC_API_VERSION, SC_PACKAGE_VERSION, SCPlugin};
@@ -34,14 +36,13 @@ impl Config {
 }
 
 struct Filedata {
-    blob: Vec<u8>,
-    sha256: [u8; 32],
+    name: String,
+    original_size: i64,
+    data: Vec<u8>, // might be compressed
 }
 
 struct Context {
     tx: mpsc::SyncSender<Filedata>,
-    count: usize,
-    count_drop: usize,
     filedata_blob: HashMap<u32, Vec<u8>>,
 }
 
@@ -57,15 +58,16 @@ extern "C" fn filedata_log(
     flags: u8,
     _dir: u8,
 ) -> c_int {
-    // Handle FFI arguments
-    let context = unsafe { &mut *thread_data.cast::<Context>() };
-    let ff = unsafe { &mut *(ff) };
+    // Handle FFI arguments, Suricata owns the data
+    let ff = unsafe { ff.as_mut() }.expect("null ff pointer");
     let data_slice = unsafe { std::slice::from_raw_parts(data, data_len as usize) };
 
     // Write data blob to temporary buffer
+    let context =
+        unsafe { thread_data.cast::<Context>().as_mut() }.expect("null thread_data pointer");
     match context.filedata_blob.get_mut(&ff.file_store_id) {
         Some(pending_blob) => {
-            pending_blob.append(data_slice.to_owned().as_mut());
+            pending_blob.extend_from_slice(data_slice);
         }
         None => {
             context
@@ -75,16 +77,35 @@ extern "C" fn filedata_log(
     }
 
     if flags & ffi::OUTPUT_FILEDATA_FLAG_CLOSE != 0 {
-        // Got last part of data, send filedata to database thread
+        // Got last part of data, compress then send filedata to database thread
         if let Some(blob) = context.filedata_blob.remove(&ff.file_store_id) {
-            let sha256 = ff.sha256.to_owned();
-            let filedata = Filedata { blob, sha256 };
-            if let Err(_err) = context.tx.send(filedata) {
-                context.count_drop = context.count_drop.saturating_add(1);
-                log::debug!("Failed to send filedata to database thread");
-                return -1;
+            let name = ff.sha256.iter().fold(String::new(), |mut output, b| {
+                let _ = write!(output, "{b:02x}");
+                output
+            });
+            let original_size = blob.len().try_into().unwrap_or(0i64);
+            let data = if original_size < 256 {
+                // Do not compress smaller blobs
+                blob
+            } else {
+                // Compress using deflate
+                let mut e =
+                    flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::fast());
+                match e.write_all(&blob) {
+                    Ok(()) => e.finish().unwrap_or_else(|_| blob.clone()),
+                    Err(_) => blob,
+                }
+            };
+
+            let filedata = Filedata {
+                name,
+                original_size,
+                data,
+            };
+            // Block until there is space in database buffer
+            if let Err(err) = context.tx.send(filedata) {
+                panic!("Database thread is no longer alive: {err:?}");
             }
-            context.count = context.count.saturating_add(1);
         }
     }
     0
@@ -102,13 +123,11 @@ extern "C" fn filedata_thread_init(
     let (tx, rx) = mpsc::sync_channel(config.buffer);
     let mut database_client = match database::Database::new(&config.database_url, rx) {
         Ok(db) => db,
-        Err(err) => panic!("Failed to open database {}: {err:?}", config.database_url),
+        Err(err) => panic!("Failed to open database: {err:?}"),
     };
     std::thread::spawn(move || database_client.run());
     let context_ptr = Box::into_raw(Box::new(Context {
         tx,
-        count: 0,
-        count_drop: 0,
         filedata_blob: HashMap::new(),
     }));
 
@@ -123,11 +142,7 @@ extern "C" fn filedata_thread_deinit(
     thread_data: *mut *mut c_void,
 ) {
     let context = unsafe { Box::from_raw(thread_data.cast::<Context>()) };
-    log::info!(
-        "SQL filedata output finished: count={} drop={}",
-        context.count,
-        context.count_drop
-    );
+    log::debug!("SQL filedata output finished");
     std::mem::drop(context);
 }
 
