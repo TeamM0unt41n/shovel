@@ -2,6 +2,7 @@
 
 /*
  * Copyright (C) 2023-2024  ANSSI
+ * Copyright (C) 2026  A. Iooss
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -61,10 +62,13 @@ class FlowDisplay {
     // On new flow selected, update display
     window.addEventListener('locationchange', () => this.update())
 
-    // Load config
-    const appData = document.getElementById('app').dataset
-    this.startTs = Math.floor(Date.parse(appData.startDate) / 1000)
-    this.tickLength = Number(appData.tickLength)
+    // Game configuration
+    this.startTs = 0
+    this.tickLength = 0
+    window.addEventListener('configchange', e => {
+      this.startTs = e.detail.timestampStart
+      this.tickLength = e.detail.tickLength
+    })
 
     // On V key, switch view
     document.addEventListener('keyup', e => {
@@ -304,7 +308,7 @@ class FlowDisplay {
     document.getElementById('display-flow-pcap').href = `/api/flow/${flowId}/pcap`
     if (this.tickLength > 0) {
       document.getElementById('display-flow-tick').classList.remove('d-none')
-      const tick = ((flow.flow.ts_start / 1000000 - this.startTs) / this.tickLength).toFixed(3)
+      const tick = ((flow.flow.ts_start - this.startTs) / 1000000 / this.tickLength).toFixed(3)
       document.querySelector('#display-flow-tick > a > span').textContent = tick
       document.querySelector('#display-flow-tick > a').dataset.ts = flow.flow.ts_start
       document.title = `Shovel - Tick ${tick}`

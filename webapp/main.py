@@ -15,7 +15,7 @@ from starlette.applications import Starlette
 from starlette.config import Config
 from starlette.datastructures import CommaSeparatedStrings
 from starlette.exceptions import HTTPException
-from starlette.responses import JSONResponse, Response, StreamingResponse
+from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -30,12 +30,8 @@ def row_to_dict(row: aiosqlite.Row) -> dict:
     return row_dict
 
 
-async def index(request):
-    context = {
-        "request": request,
-        "ctf_config": CTF_CONFIG,
-    }
-    return templates.TemplateResponse("index.html.jinja2", context)
+async def index(_):
+    return FileResponse("static/index.html")
 
 
 async def api_filedata_get(request):

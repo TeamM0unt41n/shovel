@@ -14,7 +14,8 @@ const DATE_PARAMS = { hour: 'numeric', minute: 'numeric', second: 'numeric', fra
 /**
  * Flow list sidebar
  *
- * Triggers 'locationchange' event on the window to update flow display.
+ * Triggers 'locationchange' event on the window on flow selection change.
+ * Triggers 'configchange' event on the window on game config update.
  */
 class FlowList {
   constructor () {
@@ -350,6 +351,11 @@ class FlowList {
     this.redrawTimeline()
     this.updateServices(config.services)
     this.updateFlowsList()
+
+    // Notify other components such as flowdisplay
+    window.dispatchEvent(new CustomEvent('configchange', {
+      detail: { timestampStart: this.timestampStart, tickLength: this.tickLength }
+    }))
   }
 
   /**
