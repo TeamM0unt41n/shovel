@@ -52,12 +52,12 @@ async fn write_batch_sqlite(
                 .map(|r| r.rows_affected())
             },
             "alert" => sqlx::query(
-                "WITH vars AS (SELECT jsonb_extract($1, '$.' || $2) AS extra_data) \
+                "WITH vars AS (SELECT jsonb_extract($1, '$.alert') AS extra_data) \
                 INSERT OR IGNORE INTO alert (flow_id, tag, color, timestamp, extra_data) \
                 SELECT $1->>'flow_id', (vars.extra_data->>'$.metadata.tag[0]'), (vars.extra_data->>'$.metadata.color[0]'), (UNIXEPOCH(SUBSTR($1->>'timestamp', 1, 19))*1000000 + SUBSTR($1->>'timestamp', 21, 6)), vars.extra_data \
                 FROM vars")
                 .bind(&event.data)
-                .bind(&event.type_).execute(&mut **transaction)
+                .execute(&mut **transaction)
                 .await
                 .map(|r| r.rows_affected()),
             "stats" => sqlx::query("INSERT INTO stats (timestamp, extra_data) VALUES ((UNIXEPOCH(SUBSTR($1->>'timestamp', 1, 19))*1000000 + SUBSTR($1->>'timestamp', 21, 6)), jsonb_extract($1, '$.stats')) ON CONFLICT DO NOTHING")
@@ -85,49 +85,69 @@ async fn write_batch_postgres(
     transaction: &mut Transaction<'_, sqlx::Postgres>,
     events: &[EveEvent],
 ) -> Result<u64, sqlx::Error> {
+    let mut batch_flow = vec![];
+    let mut batch_alert = vec![];
+    let mut batch_stats = vec![];
+    let mut batch_other = vec![];
+    events.iter().for_each(|e| match e.type_.as_str() {
+        "flow" => batch_flow.extend(Some(e.data.as_str())),
+        "alert" => batch_alert.extend(Some(e.data.as_str())),
+        "stats" => batch_stats.extend(Some(e.data.as_str())),
+        _ => batch_other.extend(Some((e.data.as_str(), e.type_.as_str()))),
+    });
+
     let mut inserted = 0u64;
-    // TODO: rewrite this to use 3 queries with UNNEST
-    for event in events {
-        let count = match event.type_.as_str() {
-            "flow" => {
-                let (src_ip, dest_ip) = sc_ip_format(&event.data);
-                sqlx::query(
-                    "INSERT INTO flow (id, ts_start, ts_end, src_ip, src_port, dest_ip, dest_port, proto, app_proto, metadata, extra_data) \
-                    VALUES (($1::json->>'flow_id')::bigint, EXTRACT(EPOCH FROM ($1::json#>>'{flow,start}')::timestamp) * 1000000, \
-                    EXTRACT(EPOCH FROM ($1::json#>>'{flow,end}')::timestamp) * 1000000, $2, ($1::json->>'src_port')::int, $3, ($1::json->>'dest_port')::int, \
-                    $1::json->>'proto', $1::json->>'app_proto', $1::json->'metadata', $1::json->'flow') ON CONFLICT DO NOTHING")
-                .bind(&event.data)
-                .bind(src_ip)
-                .bind(dest_ip)
-                .execute(&mut **transaction)
-                .await
-                .map(|r| r.rows_affected())
-            },
-            "alert" => sqlx::query(
-                "WITH vars AS (SELECT $1::json->$2 AS extra_data) INSERT INTO alert (flow_id, tag, color, timestamp, extra_data) \
-                SELECT ($1::json->>'flow_id')::bigint, COALESCE(vars.extra_data#>>'{metadata,tag,0}', ''), (vars.extra_data#>>'{metadata,color,0}'), \
-                EXTRACT(EPOCH FROM ($1::json->>'timestamp')::timestamp) * 1000000, vars.extra_data FROM vars ON CONFLICT DO NOTHING")
-                .bind(&event.data)
-                .bind(&event.type_)
-                .execute(&mut **transaction)
-                .await
-                .map(|r| r.rows_affected()),
-            "stats" => sqlx::query(
-                "INSERT INTO stats (timestamp, extra_data) \
-                VALUES (EXTRACT(EPOCH FROM ($1::json->>'timestamp')::timestamp) * 1000000, $1::json->'stats') ON CONFLICT DO NOTHING")
-                .bind(&event.data)
-                .execute(&mut **transaction)
-                .await
-                .map(|r| r.rows_affected()),
-            _ => sqlx::query(
-                "INSERT INTO \"other-event\" (flow_id, timestamp, event_type, extra_data) \
-                VALUES (($1::json->>'flow_id')::bigint, EXTRACT(EPOCH FROM ($1::json->>'timestamp')::timestamp) * 1000000, $2, $1::json->$2) ON CONFLICT DO NOTHING")
-                .bind(&event.data).bind(&event.type_).execute(&mut **transaction)
-                .await
-                .map(|r| r.rows_affected()),
-        }?;
-        inserted = inserted.saturating_add(count);
-    }
+
+    let (batch_flow_src_ip, batch_flow_dest_ip): (Vec<_>, Vec<_>) =
+        batch_flow.clone().into_iter().map(sc_ip_format).unzip();
+    let count = sqlx::query(
+        "INSERT INTO flow (id, ts_start, ts_end, src_ip, src_port, dest_ip, dest_port, proto, app_proto, metadata, extra_data) \
+        SELECT (event->>'flow_id')::bigint, EXTRACT(EPOCH FROM (event#>>'{flow,start}')::timestamp) * 1000000, \
+        EXTRACT(EPOCH FROM (event#>>'{flow,end}')::timestamp) * 1000000, src_ip, (event->>'src_port')::int, dest_ip, (event->>'dest_port')::int, \
+        event->>'proto', event->>'app_proto', event->'metadata', event->'flow' \
+        FROM UNNEST($1::json[], $2::text[], $3::text[]) AS _(event, src_ip, dest_ip) ON CONFLICT DO NOTHING")
+        .bind(&batch_flow)
+        .bind(&batch_flow_src_ip)
+        .bind(&batch_flow_dest_ip)
+        .execute(&mut **transaction)
+        .await
+        .map(|r| r.rows_affected())?;
+    inserted = inserted.saturating_add(count);
+
+    let count = sqlx::query(
+        "INSERT INTO alert (flow_id, tag, color, timestamp, extra_data) \
+        SELECT (event->>'flow_id')::bigint, COALESCE(event#>>'{alert,metadata,tag,0}', ''), (event#>>'{alert,metadata,color,0}'), \
+        EXTRACT(EPOCH FROM (event->>'timestamp')::timestamp) * 1000000, event::json->'alert' \
+        FROM UNNEST($1::json[]) AS event ON CONFLICT DO NOTHING")
+        .bind(&batch_alert)
+        .execute(&mut **transaction)
+        .await
+        .map(|r| r.rows_affected())?;
+    inserted = inserted.saturating_add(count);
+
+    let count = sqlx::query(
+        "INSERT INTO stats (timestamp, extra_data) \
+        SELECT EXTRACT(EPOCH FROM (event->>'timestamp')::timestamp) * 1000000, event->'stats' \
+        FROM UNNEST($1::json[]) AS event ON CONFLICT DO NOTHING",
+    )
+    .bind(&batch_stats)
+    .execute(&mut **transaction)
+    .await
+    .map(|r| r.rows_affected())?;
+    inserted = inserted.saturating_add(count);
+
+    let (batch_other_data, batch_other_type): (Vec<_>, Vec<_>) = batch_other.into_iter().unzip();
+    let count = sqlx::query(
+        "INSERT INTO \"other-event\" (flow_id, timestamp, event_type, extra_data) \
+        SELECT (event->>'flow_id')::bigint, EXTRACT(EPOCH FROM (event->>'timestamp')::timestamp) * 1000000, event_type, event->event_type \
+        FROM UNNEST($1::json[], $2::text[]) AS _(event, event_type) ON CONFLICT DO NOTHING")
+        .bind(&batch_other_data)
+        .bind(&batch_other_type)
+        .execute(&mut **transaction)
+        .await
+        .map(|r| r.rows_affected())?;
+    inserted = inserted.saturating_add(count);
+
     Ok(inserted)
 }
 
