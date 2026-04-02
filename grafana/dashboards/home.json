@@ -24,15 +24,13 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": 2,
   "links": [],
   "panels": [
     {
       "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "PA850873C8E526CF4"
+        "type": "grafana-postgresql-datasource",
+        "uid": "PA478B4566BE5CB00"
       },
-      "description": "",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -63,6 +61,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -177,19 +176,36 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "12.1.1",
+      "pluginVersion": "12.4.2",
       "targets": [
         {
+          "dataset": "shovel",
           "datasource": {
-            "type": "frser-sqlite-datasource",
-            "uid": "PA850873C8E526CF4"
+            "type": "grafana-postgresql-datasource",
+            "uid": "PA478B4566BE5CB00"
           },
-          "hide": false,
-          "queryText": "WITH config AS (SELECT \n    (1000000 * UNIXEPOCH(\"${CTF_START_DATE}\")) AS ctf_start_ts,\n    (1000000 * ${CTF_TICK_LENGTH}) AS tick_length\n)\nSELECT\n    (ctf_start_ts + cast(((ts_start - ctf_start_ts) / tick_length) as int) * tick_length) / 1000000 AS time,\n    (ts_start - ctf_start_ts) / tick_length as tick,\n    COUNT(*) as flows,\n    (ctf_start_ts + cast((ts_start - ctf_start_ts) / tick_length + 1 as int) * tick_length) as ts_to_url\nFROM flow, config\nWHERE\n    ts_start / 1000 >= $__from and ts_start / 1000 < $__to\n    AND (CONCAT(src_ip, ':', src_port) IN (${CTF_SERVICES:singlequote}) OR CONCAT(dest_ip, ':', dest_port) IN (${CTF_SERVICES:singlequote}))\nGROUP BY cast(((ts_start - ctf_start_ts) / 1000000 / ${CTF_TICK_LENGTH}) as int) * ${CTF_TICK_LENGTH}\n",
-          "queryType": "table",
-          "rawQueryText": "WITH config AS (SELECT \n    (1000000 * UNIXEPOCH(\"${CTF_START_DATE}\")) AS ctf_start_ts,\n    (1000000 * ${CTF_TICK_LENGTH}) AS tick_length\n)\nSELECT\n    (ctf_start_ts + cast(((ts_start - ctf_start_ts) / tick_length) as int) * tick_length) / 1000000 AS time,\n    (ts_start - ctf_start_ts) / tick_length as tick,\n    COUNT(*) as flows,\n    (ctf_start_ts + cast((ts_start - ctf_start_ts) / tick_length + 1 as int) * tick_length) as ts_to_url\nFROM flow, config\nWHERE\n    ts_start / 1000 >= $__from and ts_start / 1000 < $__to\n    AND (CONCAT(src_ip, ':', src_port) IN (${CTF_SERVICES:singlequote}) OR CONCAT(dest_ip, ':', dest_port) IN (${CTF_SERVICES:singlequote}))\nGROUP BY cast(((ts_start - ctf_start_ts) / 1000000 / ${CTF_TICK_LENGTH}) as int) * ${CTF_TICK_LENGTH}\n",
-          "refId": "ALL",
-          "timeColumns": ["time", "ts"]
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH config AS (SELECT \n    (1000000 * EXTRACT(EPOCH FROM '${CTF_START_DATE}'::timestamp)) AS ctf_start_ts,\n    (1000000 * '${CTF_TICK_LENGTH}'::bigint) AS tick_length\n)\nSELECT\n    MIN(ts_start) / 1000000 AS time,\n    MIN(FLOOR((ts_start - ctf_start_ts) / tick_length)) as tick,\n    COUNT(*) as flows,\n    MIN(ctf_start_ts + FLOOR((ts_start - ctf_start_ts) / tick_length + 1) * tick_length) as ts_to_url\nFROM flow, config\nWHERE\n    ts_start * 1000 >= $__unixEpochNanoFrom() and ts_start * 1000 < $__unixEpochNanoTo()\n    AND (CONCAT(src_ip, ':', src_port) IN (${CTF_SERVICES:singlequote}) OR CONCAT(dest_ip, ':', dest_port) IN (${CTF_SERVICES:singlequote}))\nGROUP BY FLOOR((ts_start - ctf_start_ts) / tick_length)",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Flows per tick",
@@ -197,10 +213,9 @@
     },
     {
       "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "PA850873C8E526CF4"
+        "type": "grafana-postgresql-datasource",
+        "uid": "PA478B4566BE5CB00"
       },
-      "description": "",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -231,6 +246,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -383,30 +399,65 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "12.1.1",
+      "pluginVersion": "12.4.2",
       "targets": [
         {
+          "dataset": "shovel",
           "datasource": {
-            "type": "frser-sqlite-datasource",
-            "uid": "PA850873C8E526CF4"
+            "type": "grafana-postgresql-datasource",
+            "uid": "PA478B4566BE5CB00"
           },
-          "hide": false,
-          "queryText": "WITH config AS (SELECT \n    (1000000 * UNIXEPOCH(\"${CTF_START_DATE}\")) AS ctf_start_ts,\n    (1000000 * ${CTF_TICK_LENGTH}) AS tick_length\n)\nSELECT\n    (ctf_start_ts + cast(((ts_start - ctf_start_ts) / tick_length) as int) * tick_length) / 1000000 AS time,\n    (ts_start - ctf_start_ts) / tick_length as tick,\n    COUNT(*) as flag_out,\n    (ctf_start_ts + cast((ts_start - ctf_start_ts) / tick_length + 1 as int) * tick_length) as ts_to_url\nFROM flow, config\nWHERE\n    ts_start / 1000 >= $__from and ts_start / 1000 < $__to\n    AND id IN (SELECT flow_id FROM alert WHERE tag = \"FLAG OUT\")\n    AND (CONCAT(src_ip, ':', src_port) IN (${CTF_SERVICES:singlequote}) OR CONCAT(dest_ip, ':', dest_port) IN (${CTF_SERVICES:singlequote}))\nGROUP BY cast(((ts_start - ctf_start_ts) / 1000000 / ${CTF_TICK_LENGTH}) as int) * ${CTF_TICK_LENGTH}\n",
-          "queryType": "table",
-          "rawQueryText": "WITH config AS (SELECT \n    (1000000 * UNIXEPOCH(\"${CTF_START_DATE}\")) AS ctf_start_ts,\n    (1000000 * ${CTF_TICK_LENGTH}) AS tick_length\n)\nSELECT\n    (ctf_start_ts + cast(((ts_start - ctf_start_ts) / tick_length) as int) * tick_length) / 1000000 AS time,\n    (ts_start - ctf_start_ts) / tick_length as tick,\n    COUNT(*) as flag_out,\n    (ctf_start_ts + cast((ts_start - ctf_start_ts) / tick_length + 1 as int) * tick_length) as ts_to_url\nFROM flow, config\nWHERE\n    ts_start / 1000 >= $__from and ts_start / 1000 < $__to\n    AND id IN (SELECT flow_id FROM alert WHERE tag = \"FLAG OUT\")\n    AND (CONCAT(src_ip, ':', src_port) IN (${CTF_SERVICES:singlequote}) OR CONCAT(dest_ip, ':', dest_port) IN (${CTF_SERVICES:singlequote}))\nGROUP BY cast(((ts_start - ctf_start_ts) / 1000000 / ${CTF_TICK_LENGTH}) as int) * ${CTF_TICK_LENGTH}\n",
-          "refId": "FLAG OUT",
-          "timeColumns": ["time", "ts"]
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH config AS (SELECT \n    (1000000 * EXTRACT(EPOCH FROM '${CTF_START_DATE}'::timestamp)) AS ctf_start_ts,\n    (1000000 * '${CTF_TICK_LENGTH}'::bigint) AS tick_length\n)\nSELECT\n    MIN(ts_start) / 1000000 AS time,\n    MIN(FLOOR((ts_start - ctf_start_ts) / tick_length)) as tick,\n    COUNT(*) as flag_out,\n    MIN(ctf_start_ts + FLOOR((ts_start - ctf_start_ts) / tick_length + 1) * tick_length) as ts_to_url\nFROM flow, config\nWHERE\n    ts_start * 1000 >= $__unixEpochNanoFrom() and ts_start * 1000 < $__unixEpochNanoTo()\n    AND id IN (SELECT flow_id FROM alert WHERE tag = 'FLAG OUT')\n    AND (CONCAT(src_ip, ':', src_port) IN (${CTF_SERVICES:singlequote}) OR CONCAT(dest_ip, ':', dest_port) IN (${CTF_SERVICES:singlequote}))\nGROUP BY cast(((ts_start - ctf_start_ts) / 1000000 / ${CTF_TICK_LENGTH}) as int) * ${CTF_TICK_LENGTH}\n",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         },
         {
+          "dataset": "shovel",
           "datasource": {
-            "type": "frser-sqlite-datasource",
-            "uid": "PA850873C8E526CF4"
+            "type": "grafana-postgresql-datasource",
+            "uid": "PA478B4566BE5CB00"
           },
-          "queryText": "WITH config AS (SELECT \n    (1000000 * UNIXEPOCH(\"${CTF_START_DATE}\")) AS ctf_start_ts,\n    (1000000 * ${CTF_TICK_LENGTH}) AS tick_length\n)\nSELECT\n    (ctf_start_ts + cast(((ts_start - ctf_start_ts) / tick_length) as int) * tick_length) / 1000000 AS time,\n    COUNT(*) as flag_in\nFROM flow, config\nWHERE\n    ts_start / 1000 >= $__from and ts_start / 1000 < $__to\n    AND id IN (SELECT flow_id FROM alert WHERE tag = \"FLAG IN\")\nGROUP BY cast(((ts_start - ctf_start_ts) / 1000000 / ${CTF_TICK_LENGTH}) as int) * ${CTF_TICK_LENGTH}\n",
-          "queryType": "table",
-          "rawQueryText": "WITH config AS (SELECT \n    (1000000 * UNIXEPOCH(\"${CTF_START_DATE}\")) AS ctf_start_ts,\n    (1000000 * ${CTF_TICK_LENGTH}) AS tick_length\n)\nSELECT\n    (ctf_start_ts + cast(((ts_start - ctf_start_ts) / tick_length) as int) * tick_length) / 1000000 AS time,\n    COUNT(*) as flag_in\nFROM flow, config\nWHERE\n    ts_start / 1000 >= $__from and ts_start / 1000 < $__to\n    AND id IN (SELECT flow_id FROM alert WHERE tag = \"FLAG IN\")\nGROUP BY cast(((ts_start - ctf_start_ts) / 1000000 / ${CTF_TICK_LENGTH}) as int) * ${CTF_TICK_LENGTH}\n",
-          "refId": "FLAG IN",
-          "timeColumns": ["time"]
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH config AS (SELECT \n    (1000000 * EXTRACT(EPOCH FROM '${CTF_START_DATE}'::timestamp)) AS ctf_start_ts,\n    (1000000 * '${CTF_TICK_LENGTH}'::bigint) AS tick_length\n)\nSELECT\n    MIN(ts_start) / 1000000 AS time,\n    MIN(FLOOR((ts_start - ctf_start_ts) / tick_length)) as tick,\n    COUNT(*) as flag_in,\n    MIN(ctf_start_ts + FLOOR((ts_start - ctf_start_ts) / tick_length + 1) * tick_length) as ts_to_url\nFROM flow, config\nWHERE\n    ts_start * 1000 >= $__unixEpochNanoFrom() and ts_start * 1000 < $__unixEpochNanoTo()\n    AND id IN (SELECT flow_id FROM alert WHERE tag = 'FLAG IN')\n    AND (CONCAT(src_ip, ':', src_port) IN (${CTF_SERVICES:singlequote}) OR CONCAT(dest_ip, ':', dest_port) IN (${CTF_SERVICES:singlequote}))\nGROUP BY cast(((ts_start - ctf_start_ts) / 1000000 / ${CTF_TICK_LENGTH}) as int) * ${CTF_TICK_LENGTH}\n",
+          "refId": "B",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "FLAG IN/OUT per tick",
@@ -414,8 +465,8 @@
     },
     {
       "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "PA850873C8E526CF4"
+        "type": "grafana-postgresql-datasource",
+        "uid": "PA478B4566BE5CB00"
       },
       "fieldConfig": {
         "defaults": {},
@@ -423,7 +474,7 @@
       },
       "gridPos": {
         "h": 16,
-        "w": 9,
+        "w": 14,
         "x": 0,
         "y": 8
       },
@@ -434,19 +485,43 @@
         "enableLogDetails": false,
         "prettifyLogMessage": false,
         "showCommonLabels": false,
+        "showControls": false,
         "showLabels": false,
         "showTime": true,
         "sortOrder": "Descending",
+        "unwrappedColumns": false,
         "wrapLogMessage": false
       },
-      "pluginVersion": "12.1.1",
+      "pluginVersion": "12.4.2",
       "targets": [
         {
-          "queryText": "WITH config AS (SELECT \n    (1000000 * UNIXEPOCH(\"${CTF_START_DATE}\")) AS ctf_start_ts,\n    (1000000 * ${CTF_TICK_LENGTH}) AS tick_length\n)\nSELECT\n    ts_start / 1000000 AS time,\n    concat('tick=', (ts_start - ctf_start_ts) / tick_length, ' ', metadata->>'$.flowvars[0].match') AS text\nFROM flow, config\nWHERE\n    ts_start / 1000 >= $__from and ts_start / 1000 < $__to\n    AND metadata->>'$.flowvars[0].match' IS NOT NULL\n    AND (CONCAT(src_ip, ':', src_port) IN (${CTF_SERVICES:singlequote}) OR CONCAT(dest_ip, ':', dest_port) IN (${CTF_SERVICES:singlequote}))\nORDER BY ts_start DESC\nLIMIT 1000",
-          "queryType": "table",
-          "rawQueryText": "WITH config AS (SELECT \n    (1000000 * UNIXEPOCH(\"${CTF_START_DATE}\")) AS ctf_start_ts,\n    (1000000 * ${CTF_TICK_LENGTH}) AS tick_length\n)\nSELECT\n    ts_start / 1000000 AS time,\n    concat('tick=', (ts_start - ctf_start_ts) / tick_length, ' ', metadata->>'$.flowvars[0].match') AS text\nFROM flow, config\nWHERE\n    ts_start / 1000 >= $__from and ts_start / 1000 < $__to\n    AND metadata->>'$.flowvars[0].match' IS NOT NULL\n    AND (CONCAT(src_ip, ':', src_port) IN (${CTF_SERVICES:singlequote}) OR CONCAT(dest_ip, ':', dest_port) IN (${CTF_SERVICES:singlequote}))\nORDER BY ts_start DESC\nLIMIT 1000",
+          "dataset": "shovel",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "PA478B4566BE5CB00"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH config AS (SELECT \n    (1000000 * EXTRACT(EPOCH FROM '${CTF_START_DATE}'::timestamp)) AS ctf_start_ts,\n    (1000000 * '${CTF_TICK_LENGTH}'::bigint) AS tick_length\n)\nSELECT\n    ts_start / 1000000 AS time,\n    concat('tick=', (ts_start - ctf_start_ts) / tick_length, ' ', metadata#>>'{flowvars,0,match}') AS text\nFROM flow, config\nWHERE\n    ts_start * 1000 >= $__unixEpochNanoFrom() and ts_start * 1000 < $__unixEpochNanoTo()\n    AND metadata#>>'{flowvars,0,match}' IS NOT NULL\n    AND (CONCAT(src_ip, ':', src_port) IN (${CTF_SERVICES:singlequote}) OR CONCAT(dest_ip, ':', dest_port) IN (${CTF_SERVICES:singlequote}))\nORDER BY ts_start DESC\nLIMIT 1000",
           "refId": "A",
-          "timeColumns": ["time", "ts"]
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
       "title": "Last flags IN/OUT",
@@ -455,7 +530,7 @@
   ],
   "preload": false,
   "refresh": "10s",
-  "schemaVersion": 41,
+  "schemaVersion": 42,
   "tags": [],
   "templating": {
     "list": [
@@ -494,7 +569,8 @@
         "name": "CTF_SERVICES",
         "options": [],
         "query": "$CTF_SERVICES",
-        "type": "custom"
+        "type": "custom",
+        "valuesFormat": "csv"
       }
     ]
   },
@@ -503,8 +579,9 @@
     "to": "2030-01-01T12:00:00.000Z"
   },
   "timepicker": {},
-  "timezone": "",
+  "timezone": "browser",
   "title": "Home",
   "uid": "WdNSDiRIz",
-  "version": 9
+  "version": 2,
+  "weekStart": ""
 }

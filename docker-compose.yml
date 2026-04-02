@@ -51,11 +51,15 @@ services:
   grafana:
     build: ./grafana
     image: ghcr.io/fcsc-fr/shovel/grafana:dev
-    restart: always
-    volumes:
-      - "./suricata/output:/suricata/output:rw"
-      # Uncomment the following line if you want persistence
-      #- "grafana-storage:/var/lib/grafana"
+    restart: on-failure
+    # Uncomment the following line if you want persistence
+    #volumes: ["grafana-storage:/var/lib/grafana"]
+    environment:
+      # Warning: in production give read-only permissions to this user
+      - POSTGRES_HOST=db:5432
+      - POSTGRES_USER=shovel
+      - POSTGRES_PASSWORD=unsecure_password
+      - POSTGRES_DATABASE=shovel
     ports:
       - 127.0.0.1:8001:3000
     env_file:

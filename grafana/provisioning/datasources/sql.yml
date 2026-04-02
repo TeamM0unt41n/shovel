@@ -1,10 +1,16 @@
-# Copyright (C) 2025  A. Iooss
+# Copyright (C) 2026  A. Iooss
 # SPDX-License-Identifier: CC0-1.0
 apiVersion: 1
 
 datasources:
-  - name: Suricata Eve
-    type: frser-sqlite-datasource
+  - name: postgresql
+    type: postgres
+    url: ${POSTGRES_HOST}
+    user: ${POSTGRES_USER}
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
     jsonData:
-      path: /suricata/output/eve.db
+      database: ${POSTGRES_DATABASE}
+      sslmode: disable
+      postgresVersion: 1500
     isDefault: true

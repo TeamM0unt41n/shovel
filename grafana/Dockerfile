@@ -1,9 +1,6 @@
-# Copyright (C) 2025  A. Iooss
+# Copyright (C) 2025-2026  A. Iooss
 # SPDX-License-Identifier: CC0-1.0
-
-# Package grafana with SQLite plugin
-FROM grafana/grafana-oss:12.3.2
-RUN grafana cli --pluginsDir /var/lib/grafana/plugins plugins install frser-sqlite-datasource
+FROM grafana/grafana-oss:12.4.2
 
 # Setup provisioning
 ENV GF_LOG_LEVEL=warn \
