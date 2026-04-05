@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS "alert" (
     color TEXT,
     timestamp BIGINT NOT NULL,
     extra_data JSONB,
-    PRIMARY KEY(flow_id, tag)
+    PRIMARY KEY(flow_id, tag, timestamp)
 );
 CREATE TABLE IF NOT EXISTS "other-event" (
     flow_id BIGINT NOT NULL,
