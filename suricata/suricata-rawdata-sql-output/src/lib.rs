@@ -53,9 +53,13 @@ extern "C" fn packet_log(
     // Handle FFI arguments, Suricata owns the data
     let pkt = unsafe { pkt.as_ref() }.expect("null pkt pointer");
     let data = unsafe { std::slice::from_raw_parts(pkt.payload, pkt.payload_len as usize) };
-    let flow = unsafe { pkt.flow.as_ref() }.expect("null flow pointer");
-    let flow_id = ffi::flow_get_id(flow);
-    let direction = unsafe { ffi::FlowGetPacketDirection(flow, pkt) };
+    let (flow_id, direction) = if let Some(flow) = unsafe { pkt.flow.as_ref() } {
+        (ffi::flow_get_id(flow), unsafe {
+            ffi::FlowGetPacketDirection(flow, pkt)
+        })
+    } else {
+        (0, 0) // flow is null pointer, happens sometimes
+    };
 
     // Get payload count for this flow
     let context =
