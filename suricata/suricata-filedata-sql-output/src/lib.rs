@@ -7,7 +7,6 @@ mod ffi;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fmt::Write as _;
-use std::io::Write as _;
 use std::os::raw::{c_int, c_void};
 use std::sync::mpsc;
 use suricata_sys::sys::{SC_API_VERSION, SC_PACKAGE_VERSION, SCPlugin};
@@ -89,11 +88,11 @@ extern "C" fn filedata_log(
                 blob
             } else {
                 // Compress using deflate
-                let mut e =
-                    flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::fast());
-                match e.write_all(&blob) {
-                    Ok(()) => e.finish().unwrap_or_else(|_| blob.clone()),
-                    Err(_) => blob,
+                let mut buf = vec![0u8; zlib_rs::compress_bound(blob.len())];
+                match zlib_rs::compress_slice(&mut buf, &blob, zlib_rs::DeflateConfig::best_speed())
+                {
+                    (_, zlib_rs::ReturnCode::Ok) => buf,
+                    _ => blob,
                 }
             };
 
