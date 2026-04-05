@@ -1,5 +1,6 @@
 -- Copyright (C) 2026  A. Iooss
 -- SPDX-License-Identifier: GPL-2.0-or-later
+
 CREATE TABLE IF NOT EXISTS "flow" (
     id BIGINT NOT NULL PRIMARY KEY,
     ts_start BIGINT,
@@ -21,12 +22,13 @@ CREATE TABLE IF NOT EXISTS "alert" (
     extra_data JSONB,
     PRIMARY KEY(flow_id, tag, timestamp)
 );
+-- anomaly and stats events don't have a flow_id
 CREATE TABLE IF NOT EXISTS "other-event" (
-    flow_id BIGINT NOT NULL,
+    flow_id BIGINT,
     timestamp BIGINT NOT NULL,
     event_type TEXT NOT NULL,
     extra_data JSONB,
-    PRIMARY KEY(flow_id, event_type, timestamp)
+    PRIMARY KEY(event_type, timestamp)
 );
 CREATE TABLE IF NOT EXISTS "stats" (
     timestamp BIGINT NOT NULL PRIMARY KEY,

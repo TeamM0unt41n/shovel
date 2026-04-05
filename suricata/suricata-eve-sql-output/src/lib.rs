@@ -83,9 +83,10 @@ extern "C" fn output_write(
     .unwrap_or("unknown");
 
     // Send event to database thread
+    // Null byte is replaced as it cause issues with PostgreSQL
     let event = EveEvent {
         type_: event_type.to_owned(),
-        data: text.to_owned(),
+        data: text.replace("\\u0000", "<NULL>").to_owned(),
     };
     if let Err(err) = context.tx.send(event) {
         panic!("Database thread is no longer alive: {err:?}");

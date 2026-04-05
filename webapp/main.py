@@ -123,7 +123,7 @@ async def api_flow_get(request):
         row = await con.fetchrow(
             (
                 "SELECT id, ts_start, ts_end, src_ip, src_port, dest_ip, dest_port, "
-                "proto, app_proto, json(metadata) AS json_metadata, json(extra_data) AS json_extra_data FROM flow WHERE id = $1"
+                "proto, app_proto, json(metadata) AS json_metadata, extra_data AS json_extra_data FROM flow WHERE id = $1"
             ),
             flow_id,
         )
@@ -135,7 +135,7 @@ async def api_flow_get(request):
     # Get associated events
     async with db.acquire() as con:
         rows = await con.fetch(
-            'SELECT event_type, json(extra_data) AS json_extra_data, COUNT(*) AS count FROM "other-event" WHERE flow_id = $1 GROUP BY event_type, extra_data ORDER BY MIN(timestamp)',
+            'SELECT event_type, any_value(extra_data) AS json_extra_data, COUNT(*) AS count FROM "other-event" WHERE flow_id = $1 GROUP BY event_type, extra_data ORDER BY MIN(timestamp)',
             flow_id,
         )
     for row in rows:
@@ -146,7 +146,7 @@ async def api_flow_get(request):
     # Get associated alerts
     async with db.acquire() as con:
         rows = await con.fetch(
-            "SELECT json(extra_data) AS json_extra_data, color, COUNT(*) AS count FROM alert WHERE flow_id = $1 GROUP BY extra_data, color ORDER BY MIN(timestamp)",
+            "SELECT any_value(extra_data) AS json_extra_data, color, COUNT(*) AS count FROM alert WHERE flow_id = $1 GROUP BY extra_data, color ORDER BY MIN(timestamp)",
             flow_id,
         )
     result["alert"] = [row_flatten_json(dict(r)) for r in rows]
@@ -205,7 +205,7 @@ async def api_replay_http(request):
     # Get HTTP events
     async with db.acquire() as con:
         rows = await con.fetch(
-            "SELECT flow_id, json(extra_data) AS json_extra_data FROM \"other-event\" WHERE flow_id = $1 AND event_type = 'http' ORDER BY timestamp",
+            "SELECT flow_id, extra_data AS json_extra_data FROM \"other-event\" WHERE flow_id = $1 AND event_type = 'http' ORDER BY timestamp",
             flow_id,
         )
 
@@ -217,7 +217,7 @@ async def api_replay_http(request):
         if req["http_method"] in ["POST"]:
             async with db.acquire() as con:
                 row = await con.fetchrow(
-                    "SELECT sz, data FROM \"other-event\" JOIN filedata ON filedata.name = extra_data->>'sha256' WHERE flow_id = $1 AND event_type = 'fileinfo' AND extra_data->>'tx_id'::bigint = $2 ORDER BY timestamp",
+                    "SELECT sz, data FROM \"other-event\" JOIN filedata ON filedata.name = extra_data->>'sha256' WHERE flow_id = $1 AND event_type = 'fileinfo' AND (extra_data->>'tx_id')::bigint = $2 ORDER BY timestamp",
                     flow_id,
                     tx_id,
                 )
