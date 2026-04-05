@@ -10,7 +10,7 @@ services:
       # Optional: makes rule editing easier
       - "./suricata/rules:/suricata/rules:ro"
       # Only needed for pcap output
-      - "./suricata/output:/suricata/output:rw"
+      - "./output_suricata:/output_suricata:rw"
     environment:
       - DATABASE_URL=postgres://shovel:unsecure_password@db/shovel
 
@@ -43,11 +43,8 @@ services:
     image: ghcr.io/fcsc-fr/shovel/webapp:dev
     restart: on-failure
     volumes:
-      # Write access is required in SQLite `mode=ro` as readers need to record
-      # a mark in the WAL file. If you need to make the volume read-only, then
-      # use `immutable=1` parameter in SQLite databases URI. In immutable mode,
-      # SQLite doesn't follow changes made to the database.
-      - "./suricata/output:/suricata/output:rw"
+      # Only needed for pcap download
+      - "./output_suricata:/output_suricata:rw"
     ports:
       - 127.0.0.1:8000:8000
     env_file:

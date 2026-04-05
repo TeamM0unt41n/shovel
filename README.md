@@ -135,7 +135,7 @@ sudo ./suricata/entrypoint.sh -i tun5
 > [!WARNING]
 > Please note that stopping Suricata will stop network capture.
 
-Suricata creates pcap files in `suricata/output/pcaps/` folder,
+Suricata creates pcap files in `output_suricata/pcaps/` folder,
 remember to backup this folder for archiving purposes!
 
 #### Mode C: Live capture using PCAP-over-IP (fast)

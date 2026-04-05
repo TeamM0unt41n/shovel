@@ -167,7 +167,7 @@ async def api_flow_pcap_get(request):
 
     # Serve corresponding pcap, found using timestamp
     path = None
-    for pcap_path in sorted(Path("../suricata/output/pcaps/").glob("*.*")):
+    for pcap_path in sorted(Path("../output_suricata/pcaps/").glob("*.*")):
         pcap_us = int(pcap_path.name.replace(".lz4", "").rsplit(".", 1)[-1])
         if pcap_us * 1000 > flow_us:
             break  # take previous one

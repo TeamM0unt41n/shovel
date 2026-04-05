@@ -21,10 +21,10 @@ export RAWDATA_DATABASE_URL=${DATABASE_URL}
 # Arguments override default Suricata configuration,
 # see https://github.com/OISF/suricata/blob/suricata-8.0.0/suricata.yaml.in
 # and `suricata --dump-config`
-mkdir -p suricata/output/pcaps
+mkdir -p output_suricata/pcaps
 eval "$SURICATA_CMD" \
     --runmode=single --no-random -k none \
-    -l suricata/output \
+    -l output_suricata \
     --set default-rule-path=suricata/rules \
     --set plugins.0=suricata/libeve_sql_output.so \
     --set plugins.1=suricata/libfiledata_sql_output.so \

@@ -11,7 +11,7 @@ use std::sync::mpsc;
 use suricata_sys::sys::{SC_API_VERSION, SC_PACKAGE_VERSION, SCPlugin};
 
 // Default configuration values.
-const DEFAULT_DATABASE_URL: &str = "sqlite://./suricata/output/eve.db?mode=rwc";
+const DEFAULT_DATABASE_URL: &str = "sqlite://./output_suricata/eve.db?mode=rwc";
 const DEFAULT_BUFFER_SIZE: usize = 1000;
 
 #[derive(Debug, Clone)]

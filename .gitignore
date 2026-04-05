@@ -1,11 +1,7 @@
-# Copyright (C) 2024  ANSSI
+# Copyright (C) 2026  A. Iooss
 # SPDX-License-Identifier: CC0-1.0
 input_pcaps/*
-suricata/output/pcaps
-suricata/output/*.log
-suricata/output/*.db
-suricata/output/*-shm
-suricata/output/*-wal
+output_suricata/*
 suricata/target
 .env
 
