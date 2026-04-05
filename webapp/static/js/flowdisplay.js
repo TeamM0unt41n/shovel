@@ -336,7 +336,7 @@ class FlowDisplay {
 
       // In the case of HTTP, add some metadata at the top of the card
       if (appProto === 'http' || appProto === 'http2') {
-        document.querySelector('#display-app > header > a').href = `api/replay-http/${flowId}`
+        document.querySelector('#display-app > header > a').href = `api/flow/${flowId}/replay-http`
         const allRequestHeaders = new Set()
         const allResponseHeaders = new Set()
         flow[appProto].forEach(data => {
@@ -423,7 +423,7 @@ class FlowDisplay {
     // Show raw data card if a TCP or UDP connection was established
     if (['TCP', 'UDP'].includes(flow.flow.proto) && flowEstablished) {
       document.getElementById('display-raw').classList.remove('d-none')
-      document.getElementById('display-raw-replay').href = `api/replay-raw/${flowId}`
+      document.getElementById('display-raw-replay').href = `api/flow/${flowId}/replay-raw`
 
       // Display loading indicator before sending HTTP request
       const utf8View = document.getElementById('display-raw-utf8')

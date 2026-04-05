@@ -29,7 +29,7 @@ class FlowList {
     this.timestampStart = 0 // game start
     this.tickLength = 0
     this.services = {} // used by pprintService
-    this.tags = [] // used by fillFlowsList
+    this.tags = [] // used to update tags list on selection
   }
 
   init () {
@@ -332,7 +332,7 @@ class FlowList {
     const badge = document.createElement('span')
     badge.classList.add('badge', `text-bg-${color ?? 'none'}`, 'mb-1', 'me-1', 'p-1')
     badge.textContent = text
-    if (count !== undefined) {
+    if (count !== undefined && count > 1) {
       const badgeCount = document.createElement('span')
       badgeCount.classList.add('text-bg-dark', 'bg-opacity-75', 'rounded', 'me-1', 'px-1')
       badgeCount.textContent = count
@@ -561,14 +561,9 @@ class FlowList {
       const badge = this.tagBadge(appProto.toUpperCase())
       flowEl.appendChild(badge)
 
-      const flowTags = flow.tags?.split(',')
-      this.tags.forEach(t => {
-        const { tag, color } = t
-        if (flowTags?.includes(tag)) {
-          const tagId = 'tag_' + tag.replace(/[^A-Za-z0-9]/g, '_')
-          const badge = this.tagBadge(tag, color, flow.flowints?.[tagId])
-          flowEl.appendChild(badge)
-        }
+      flow.tags?.forEach(t => {
+        const badge = this.tagBadge(t.tag, t.color, t.count)
+        flowEl.appendChild(badge)
       })
 
       flowList.appendChild(flowEl)
@@ -628,7 +623,7 @@ class FlowList {
       }
       document.getElementById('filter-time-until').classList.toggle('is-active', toTs)
 
-      // Update tags filter before API response
+      // Update tags filter before API response to reflect new selection
       this.updateTags(this.tags)
 
       // Empty flow list
