@@ -11,6 +11,13 @@ if [ -n "${PCAP_OVER_IP+x}" ]; then
     SURICATA_CMD="nc -d $PCAP_OVER_IP | $SURICATA_CMD"
 fi
 
+export SC_LOG_LEVEL=${SC_LOG_LEVEL:-info}
+
+# Each SQL plugin can be configured separately, e.g. for SQLite output
+export EVE_DATABASE_URL=${DATABASE_URL}
+export FILEDATA_DATABASE_URL=${DATABASE_URL}
+export RAWDATA_DATABASE_URL=${DATABASE_URL}
+
 # Arguments override default Suricata configuration,
 # see https://github.com/OISF/suricata/blob/suricata-8.0.0/suricata.yaml.in
 # and `suricata --dump-config`
@@ -32,7 +39,7 @@ eval "$SURICATA_CMD" \
     --set outputs.1.eve-log.types.28.mqtt.passwords=yes \
     --set outputs.1.eve-log.types.31.pgsql.enabled=yes \
     --set outputs.1.eve-log.types.31.pgsql.passwords=yes \
-    --set "outputs.3.pcap-log.enabled=${PCAP_LOG:=yes}" \
+    --set "outputs.3.pcap-log.enabled=${PCAP_LOG:=no}" \
     --set outputs.3.pcap-log.limit=32MiB \
     --set outputs.3.pcap-log.compression=lz4 \
     --set outputs.3.pcap-log.dir=pcaps \

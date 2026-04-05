@@ -1,19 +1,22 @@
-# Copyright (C) 2024  ANSSI
+# Copyright (C) 2026  A. Iooss
 # SPDX-License-Identifier: CC0-1.0
 services:
   suricata:
     build: ./suricata
     image: ghcr.io/fcsc-fr/shovel/suricata:dev
     volumes:
+      # Only needed in mode A
       - "./input_pcaps:/input_pcaps:ro"
+      # Optional: makes rule editing easier
       - "./suricata/rules:/suricata/rules:ro"
+      # Only needed for pcap output
       - "./suricata/output:/suricata/output:rw"
+    environment:
+      - DATABASE_URL=postgres://shovel:unsecure_password@db/shovel
 
     # Mode A: pcap replay mode (slower, for archives replay or rootless CTF)
     # Add `--pcap-file-continuous` to watch for new pcap in folder.
     command: -r /input_pcaps
-    environment:
-      - PCAP_LOG=no
 
     # Mode B: capture interface (fast, requires root on vulnbox and in Docker)
     # Drastically reduces ingest delay, but requires to setup traffic mirroring
@@ -21,21 +24,24 @@ services:
     #command: -i tun5
     #cap_add:
     #  - NET_ADMIN
+    #environment:
+    #  - PCAP_LOG=yes
     #network_mode: "host"
 
     # Mode C: PCAP-over-IP (fast, requires root on vulnbox)
     # Connects to a PCAP-over-IP server, such as pcap-broker to read PCAP data.
     #command: -r /dev/stdin
-    #restart: always
+    #restart: on-failure
     #depends_on:
     #  - pcap-broker
     #environment:
+    #  - PCAP_LOG=yes
     #  - PCAP_OVER_IP=pcap-broker:4242
 
   webapp:
     build: ./webapp
     image: ghcr.io/fcsc-fr/shovel/webapp:dev
-    restart: always
+    restart: on-failure
     volumes:
       # Write access is required in SQLite `mode=ro` as readers need to record
       # a mark in the WAL file. If you need to make the volume read-only, then
@@ -46,6 +52,8 @@ services:
       - 127.0.0.1:8000:8000
     env_file:
       - .env
+    environment:
+      - DATABASE_URL=postgres://shovel:unsecure_password@db/shovel
 
   # Grafana default credentials are admin:admin
   grafana:
@@ -65,6 +73,15 @@ services:
     env_file:
       - .env
 
+  # Database data persist in an anonymous volume
+  # Data will be drop on `docker compose down`!!
+  db:
+    image: docker.io/library/postgres:18
+    restart: on-failure
+    environment:
+      - POSTGRES_USER=shovel
+      - POSTGRES_PASSWORD=unsecure_password
+
   #pcap-broker:
   #  container_name: pcap-broker
   #  build:
@@ -74,7 +91,7 @@ services:
   #      RUN apk add --no-cache build-base libpcap-dev openssh-client tcpdump
   #      RUN go install github.com/fox-it/pcap-broker@latest
   #      ENTRYPOINT ["pcap-broker"]
-  #  restart: always
+  #  restart: on-failure
   #  volumes:
   #    - "~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro"
   #  environment:
