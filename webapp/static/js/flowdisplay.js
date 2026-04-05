@@ -244,9 +244,10 @@ class FlowDisplay {
    * @param {HTMLElement} parentEl
    * @param {String} color - Bootstrap color
    * @param {String} text - Card content
+   * @param {Number} count - Card count indicator
    * @param {String} title - Hover content
    */
-  createSimpleCard (parentEl, color, text, title) {
+  createSimpleCard (parentEl, color, text, count, title) {
     if (!text) {
       return // do not create empty cards
     }
@@ -254,7 +255,11 @@ class FlowDisplay {
     cardEl.classList.add('card', 'm-3', 'bg-body', 'font-monospace', `border-${color}`)
     const cardHeader = document.createElement('div')
     cardHeader.classList.add('card-header')
-    cardHeader.textContent = text
+    if (count && count > 1) {
+      cardHeader.textContent = `x${count} ${text}`
+    } else {
+      cardHeader.textContent = text
+    }
     if (title) {
       cardHeader.title = title
     }
@@ -319,7 +324,7 @@ class FlowDisplay {
     while (alertsDiv.lastChild) {
       alertsDiv.removeChild(alertsDiv.lastChild)
     }
-    flow.alert?.forEach(d => this.createSimpleCard(alertsDiv, d.color, d.signature, `Suricata alert rule with sid ${d.signature_id}.`))
+    flow.alert?.forEach(d => this.createSimpleCard(alertsDiv, d.color, d.signature, d.count, `Suricata alert rule with sid ${d.signature_id}`))
     flow.anomaly?.forEach(d => this.createSimpleCard(alertsDiv, 'warning', `Dissection anomaly: ${JSON.stringify(d)}`))
     flow.flow.exception_policy?.forEach(d => this.createSimpleCard(alertsDiv, 'warning', `Flow exception: ${JSON.stringify(d)}`))
 
@@ -347,12 +352,13 @@ class FlowDisplay {
         body.textContent += [...allResponseHeaders].join('\n') + '\n\n'
       }
 
-      flow[appProto].forEach((data, txId) => {
+      let txId = 0
+      flow[appProto].forEach(data => {
         const spanEl = document.createElement('span')
         if (appProto === 'http' || appProto === 'http2') {
           // Format HTTP dissection
           spanEl.classList.add('fw-bold')
-          spanEl.textContent = `${data.http_method ?? '?'} http://${data.hostname}:${data.http_port ?? flow.flow.dest_port}${data.url ?? ''} ${data.protocol ?? ''}  ◄ ${data.status ?? '?'}\n`
+          spanEl.textContent = `${data.http_method ?? '?'}${data.count > 1 ? ` x${data.count}` : ''} http://${data.hostname}:${data.http_port ?? flow.flow.dest_port}${data.url ?? ''} ${data.protocol ?? ''}  ◄ ${data.status ?? '?'}\n`
         } else {
           // Directly pretty-print JSON Suricata app protocol dissection
           spanEl.textContent += `${JSON.stringify(data, null, 4)}\n`
@@ -360,52 +366,55 @@ class FlowDisplay {
         body.appendChild(spanEl)
 
         // Add corresponding fileinfo
-        flow.fileinfo?.filter(d => d.tx_id === txId).forEach((data, i) => {
-          const fileHref = `api/filedata/${data.sha256}`
-          const ext = this.getExtFromMagic(data.magic ?? '')
+        for (let i = 0; i < data.count; i++) {
+          flow.fileinfo?.filter(d => d.tx_id === txId).forEach((data, i) => {
+            const fileHref = `api/filedata/${data.sha256}`
+            const ext = this.getExtFromMagic(data.magic ?? '')
 
-          // Create "Download file" button
-          const downloadBtn = document.createElement('a')
-          downloadBtn.classList.add('text-nowrap')
-          downloadBtn.href = fileHref
-          downloadBtn.download = `${data.filename?.replace(/[^A-Za-z0-9]/g, '_')}.${ext}`
-          downloadBtn.textContent = 'Download file'
+            // Create "Download file" button
+            const downloadBtn = document.createElement('a')
+            downloadBtn.classList.add('text-nowrap')
+            downloadBtn.href = fileHref
+            downloadBtn.download = `${data.filename?.replace(/[^A-Za-z0-9]/g, '_')}.${ext}`
+            downloadBtn.textContent = 'Download file'
 
-          // Create views
-          const renderView = document.createElement('div')
-          const utf8View = document.createElement('code')
-          const hexView = document.createElement('code')
-          utf8View.innerText = ' ' // prevent single-line flicker on page load
-          hexView.innerText = ' '
-          fetch(fileHref).then(r => r.blob()).then(blob => {
-            this.renderBlob(blob, ext, renderView)
-            blob.text().then(t => {
-              utf8View.innerHTML = this.highlightPayload(t, flow.flow.flowvars?.map(d => d.match))
-              if (!renderView.firstChild) {
-                // no render done, show UTF-8 on render view
-                const renderCodeEl = document.createElement('code')
-                renderCodeEl.innerHTML = this.highlightPayload(t, flow.flow.flowvars?.map(d => d.match))
-                renderView.appendChild(renderCodeEl)
-              }
+            // Create views
+            const renderView = document.createElement('div')
+            const utf8View = document.createElement('code')
+            const hexView = document.createElement('code')
+            utf8View.innerText = ' ' // prevent single-line flicker on page load
+            hexView.innerText = ' '
+            fetch(fileHref).then(r => r.blob()).then(blob => {
+              this.renderBlob(blob, ext, renderView)
+              blob.text().then(t => {
+                utf8View.innerHTML = this.highlightPayload(t, flow.flow.flowvars?.map(d => d.match))
+                if (!renderView.firstChild) {
+                  // no render done, show UTF-8 on render view
+                  const renderCodeEl = document.createElement('code')
+                  renderCodeEl.innerHTML = this.highlightPayload(t, flow.flow.flowvars?.map(d => d.match))
+                  renderView.appendChild(renderCodeEl)
+                }
+              })
+              blob.arrayBuffer().then(arrayBuf => {
+                const b = new Uint8Array(arrayBuf)
+                hexView.textContent = this.renderHexDump(b)
+              })
             })
-            blob.arrayBuffer().then(arrayBuf => {
-              const b = new Uint8Array(arrayBuf)
-              hexView.textContent = this.renderHexDump(b)
-            })
+
+            // Clone fileinfo template and fill with content
+            const cardEl = document.getElementById('display-app-fileinfo').content.cloneNode(true)
+            cardEl.querySelector('header > a').href = `#fileinfo-${txId}-${i}`
+            cardEl.querySelector('header > a > span').textContent = `File ${data.filename}` + (data.magic ? `, ${data.magic}` : '')
+            cardEl.querySelector('header').appendChild(downloadBtn)
+            cardEl.querySelector('div.collapse').id = `fileinfo-${txId}-${i}`
+            cardEl.querySelector('pre.display-app-render').appendChild(renderView)
+            cardEl.querySelector('pre.display-app-utf8').appendChild(utf8View)
+            cardEl.querySelector('pre.display-app-hex').appendChild(hexView)
+            body.appendChild(cardEl)
+            this.updateAppFileinfoViews()
           })
-
-          // Clone fileinfo template and fill with content
-          const cardEl = document.getElementById('display-app-fileinfo').content.cloneNode(true)
-          cardEl.querySelector('header > a').href = `#fileinfo-${txId}-${i}`
-          cardEl.querySelector('header > a > span').textContent = `File ${data.filename}` + (data.magic ? `, ${data.magic}` : '')
-          cardEl.querySelector('header').appendChild(downloadBtn)
-          cardEl.querySelector('div.collapse').id = `fileinfo-${txId}-${i}`
-          cardEl.querySelector('pre.display-app-render').appendChild(renderView)
-          cardEl.querySelector('pre.display-app-utf8').appendChild(utf8View)
-          cardEl.querySelector('pre.display-app-hex').appendChild(hexView)
-          body.appendChild(cardEl)
-          this.updateAppFileinfoViews()
-        })
+          txId += 1
+        }
 
         // Add extra HTTP redirection information if defined
         if (appProto === 'http' || appProto === 'http2') {

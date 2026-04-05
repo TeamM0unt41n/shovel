@@ -135,22 +135,21 @@ async def api_flow_get(request):
     # Get associated events
     async with db.acquire() as con:
         rows = await con.fetch(
-            'SELECT event_type, json(extra_data) AS json_extra_data FROM "other-event" WHERE flow_id = $1 ORDER BY timestamp',
+            'SELECT event_type, json(extra_data) AS json_extra_data, COUNT(*) AS count FROM "other-event" WHERE flow_id = $1 GROUP BY event_type, extra_data ORDER BY MIN(timestamp)',
             flow_id,
         )
     for row in rows:
         result[row["event_type"]] = result.get(row["event_type"], []) + [
-            json.loads(row["json_extra_data"])
+            row_flatten_json(dict(row))
         ]
 
-    # Get associated alert
-    if flow["alerted"]:
-        async with db.acquire() as con:
-            rows = await con.fetch(
-                "SELECT json(extra_data) AS json_extra_data, color FROM alert WHERE flow_id = $1 ORDER BY timestamp",
-                flow_id,
-            )
-        result["alert"] = [row_flatten_json(dict(r)) for r in rows]
+    # Get associated alerts
+    async with db.acquire() as con:
+        rows = await con.fetch(
+            "SELECT json(extra_data) AS json_extra_data, color, COUNT(*) AS count FROM alert WHERE flow_id = $1 GROUP BY extra_data, color ORDER BY MIN(timestamp)",
+            flow_id,
+        )
+    result["alert"] = [row_flatten_json(dict(r)) for r in rows]
 
     return JSONResponse(result, headers={"Cache-Control": "max-age=86400"})
 
