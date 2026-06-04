@@ -95,11 +95,11 @@ impl Database {
                     inserted
                 }
                 DatabaseConnection::Postgres(conn) => {
-                    let mut transaction = conn.begin().await?;
                     let batch_name: Vec<&str> = batch.iter().map(|t| t.name.as_str()).collect();
                     let batch_original_size: Vec<i64> =
                         batch.iter().map(|t| t.original_size).collect();
                     let batch_data: Vec<&[u8]> = batch.iter().map(|t| t.data.as_slice()).collect();
+                    let mut transaction = conn.begin().await?;
                     let inserted = sqlx::query(
                             "INSERT INTO filedata (name, sz, data) SELECT * FROM UNNEST($1::text[], $2::int8[], $3::bytea[]) ON CONFLICT DO NOTHING",
                         )

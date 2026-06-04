@@ -103,12 +103,12 @@ impl Database {
                     inserted
                 }
                 DatabaseConnection::Postgres(conn) => {
-                    let mut transaction = conn.begin().await?;
                     let batch_flow_id: Vec<i64> = batch.iter().map(|t| t.flow_id).collect();
                     let batch_packet_count: Vec<i64> =
                         batch.iter().map(|t| t.packet_count).collect();
                     let batch_direction: Vec<i32> = batch.iter().map(|t| t.direction).collect();
                     let batch_data: Vec<&[u8]> = batch.iter().map(|t| t.data.as_slice()).collect();
+                    let mut transaction = conn.begin().await?;
                     let inserted = sqlx::query(
                             "INSERT INTO rawdata (flow_id, count, direction, data) SELECT * FROM UNNEST($1::int8[], $2::int8[], $3::int4[], $4::bytea[]) ON CONFLICT DO NOTHING",
                         )

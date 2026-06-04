@@ -59,7 +59,8 @@ extern "C" fn output_write(
     thread_data: *mut c_void,
 ) -> c_int {
     // Handle FFI arguments
-    let context = unsafe { thread_data.cast::<Context>().as_ref() }.expect("null thread_data pointer");
+    let context =
+        unsafe { thread_data.cast::<Context>().as_ref() }.expect("null thread_data pointer");
     let text = unsafe {
         str::from_utf8_unchecked(
             std::ffi::CStr::from_bytes_with_nul_unchecked(std::slice::from_raw_parts(

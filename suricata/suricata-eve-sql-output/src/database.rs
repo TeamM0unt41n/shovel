@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use crate::EveEvent;
-use sqlx::{Connection, Transaction};
+use sqlx::Connection;
 use std::str::FromStr;
 
 const SQL_SCHEMA: &str = include_str!("schema.sql");
@@ -28,10 +28,11 @@ fn sc_ip_format(buf: &str) -> (String, String) {
 
 /// Add events to the SQLite database
 async fn write_batch_sqlite(
-    transaction: &mut Transaction<'_, sqlx::Sqlite>,
+    conn: &mut sqlx::sqlite::SqliteConnection,
     events: &[EveEvent],
 ) -> Result<u64, sqlx::Error> {
     let mut inserted = 0u64;
+    let mut transaction = conn.begin().await?;
     for event in events {
         let count = match event.type_.as_str() {
             "flow" => {
@@ -47,7 +48,7 @@ async fn write_batch_sqlite(
                 .bind(&event.data)
                 .bind(src_ip)
                 .bind(dest_ip)
-                .execute(&mut **transaction)
+                .execute(&mut *transaction)
                 .await
                 .map(|r| r.rows_affected())
             },
@@ -57,12 +58,12 @@ async fn write_batch_sqlite(
                 SELECT $1->>'flow_id', (vars.extra_data->>'$.metadata.tag[0]'), (vars.extra_data->>'$.metadata.color[0]'), (UNIXEPOCH(SUBSTR($1->>'timestamp', 1, 19))*1000000 + SUBSTR($1->>'timestamp', 21, 6)), vars.extra_data \
                 FROM vars")
                 .bind(&event.data)
-                .execute(&mut **transaction)
+                .execute(&mut *transaction)
                 .await
                 .map(|r| r.rows_affected()),
             "stats" => sqlx::query("INSERT INTO stats (timestamp, extra_data) VALUES ((UNIXEPOCH(SUBSTR($1->>'timestamp', 1, 19))*1000000 + SUBSTR($1->>'timestamp', 21, 6)), jsonb_extract($1, '$.stats')) ON CONFLICT DO NOTHING")
                 .bind(&event.data)
-                .execute(&mut **transaction)
+                .execute(&mut *transaction)
                 .await
                 .map(|r| r.rows_affected()),
             _ => sqlx::query(
@@ -71,18 +72,19 @@ async fn write_batch_sqlite(
                 ON CONFLICT DO NOTHING")
                 .bind(&event.data)
                 .bind(&event.type_)
-                .execute(&mut **transaction)
+                .execute(&mut *transaction)
                 .await
                 .map(|r| r.rows_affected()),
         }?;
         inserted = inserted.saturating_add(count);
     }
+    transaction.commit().await?;
     Ok(inserted)
 }
 
 /// Add events to the PostgreSQL database
 async fn write_batch_postgres(
-    transaction: &mut Transaction<'_, sqlx::Postgres>,
+    conn: &mut sqlx::postgres::PgConnection,
     events: &[EveEvent],
 ) -> Result<u64, sqlx::Error> {
     let mut batch_flow = vec![];
@@ -100,6 +102,7 @@ async fn write_batch_postgres(
 
     let (batch_flow_src_ip, batch_flow_dest_ip): (Vec<_>, Vec<_>) =
         batch_flow.clone().into_iter().map(sc_ip_format).unzip();
+    let mut transaction = conn.begin().await?;
     let count = sqlx::query(
         "INSERT INTO flow (id, ts_start, ts_end, src_ip, src_port, dest_ip, dest_port, proto, app_proto, metadata, extra_data) \
         SELECT (event->>'flow_id')::bigint, EXTRACT(EPOCH FROM (event#>>'{flow,start}')::timestamp) * 1000000, \
@@ -109,43 +112,50 @@ async fn write_batch_postgres(
         .bind(&batch_flow)
         .bind(&batch_flow_src_ip)
         .bind(&batch_flow_dest_ip)
-        .execute(&mut **transaction)
+        .execute(&mut *transaction)
         .await
         .map(|r| r.rows_affected())?;
+    transaction.commit().await?;
     inserted = inserted.saturating_add(count);
 
+    let mut transaction = conn.begin().await?;
     let count = sqlx::query(
         "INSERT INTO alert (flow_id, tag, color, timestamp, extra_data) \
         SELECT (event->>'flow_id')::bigint, COALESCE(event#>>'{alert,metadata,tag,0}', ''), (event#>>'{alert,metadata,color,0}'), \
         EXTRACT(EPOCH FROM (event->>'timestamp')::timestamp) * 1000000, event::json->'alert' \
         FROM UNNEST($1::json[]) AS event ON CONFLICT DO NOTHING")
         .bind(&batch_alert)
-        .execute(&mut **transaction)
+        .execute(&mut *transaction)
         .await
         .map(|r| r.rows_affected())?;
+    transaction.commit().await?;
     inserted = inserted.saturating_add(count);
 
+    let mut transaction = conn.begin().await?;
     let count = sqlx::query(
         "INSERT INTO stats (timestamp, extra_data) \
         SELECT EXTRACT(EPOCH FROM (event->>'timestamp')::timestamp) * 1000000, event->'stats' \
         FROM UNNEST($1::json[]) AS event ON CONFLICT DO NOTHING",
     )
     .bind(&batch_stats)
-    .execute(&mut **transaction)
+    .execute(&mut *transaction)
     .await
     .map(|r| r.rows_affected())?;
+    transaction.commit().await?;
     inserted = inserted.saturating_add(count);
 
     let (batch_other_data, batch_other_type): (Vec<_>, Vec<_>) = batch_other.into_iter().unzip();
+    let mut transaction = conn.begin().await?;
     let count = sqlx::query(
         "INSERT INTO \"other-event\" (flow_id, timestamp, event_type, extra_data) \
         SELECT (event->>'flow_id')::bigint, EXTRACT(EPOCH FROM (event->>'timestamp')::timestamp) * 1000000, event_type, event->event_type \
         FROM UNNEST($1::json[], $2::text[]) AS _(event, event_type) ON CONFLICT DO NOTHING")
         .bind(&batch_other_data)
         .bind(&batch_other_type)
-        .execute(&mut **transaction)
+        .execute(&mut *transaction)
         .await
         .map(|r| r.rows_affected())?;
+    transaction.commit().await?;
     inserted = inserted.saturating_add(count);
 
     Ok(inserted)
@@ -219,18 +229,8 @@ impl Database {
 
             // Insert batch in database
             let inserted = match self.conn.as_mut().unwrap() {
-                DatabaseConnection::Sqlite(conn) => {
-                    let mut transaction = conn.begin().await?;
-                    let inserted = write_batch_sqlite(&mut transaction, &batch).await?;
-                    transaction.commit().await?;
-                    inserted
-                }
-                DatabaseConnection::Postgres(conn) => {
-                    let mut transaction = conn.begin().await?;
-                    let inserted = write_batch_postgres(&mut transaction, &batch).await?;
-                    transaction.commit().await?;
-                    inserted
-                }
+                DatabaseConnection::Sqlite(conn) => write_batch_sqlite(conn, &batch).await?,
+                DatabaseConnection::Postgres(conn) => write_batch_postgres(conn, &batch).await?,
             };
             log::debug!("Inserted {inserted} rows");
             self.count_inserted = self.count_inserted.saturating_add(inserted);
@@ -242,7 +242,7 @@ impl Database {
             Some(DatabaseConnection::Postgres(c)) => {
                 c.close().await?;
             }
-            None => {}
+            _ => {}
         }
         Ok(())
     }
