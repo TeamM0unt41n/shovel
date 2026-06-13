@@ -92,7 +92,7 @@ services:
       - "~/.ssh/id_vulnbox:/root/.ssh/id_ed25519:ro"
     environment:
       PCAP_COMMAND: |-
-          ssh root@10.67.1.3 -oStrictHostKeyChecking=no
+          ssh root@10.67.1.2 -oStrictHostKeyChecking=no
           tcpdump -U --immediate-mode -ni wg0 -s 65535 -w - not tcp port 22 and not tcp port 8080 and not tcp port 9100
       LISTEN_ADDRESS: 0.0.0.0:4242
 
