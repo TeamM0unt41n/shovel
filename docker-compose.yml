@@ -16,7 +16,7 @@ services:
 
     # Mode A: pcap replay mode (slower, for archives replay or rootless CTF)
     # Add `--pcap-file-continuous` to watch for new pcap in folder.
-    command: -r /input_pcaps
+    # command: -r /input_pcaps --pcap-file-continuous
 
     # Mode B: capture interface (fast, requires root on vulnbox and in Docker)
     # Drastically reduces ingest delay, but requires to setup traffic mirroring
@@ -30,13 +30,13 @@ services:
 
     # Mode C: PCAP-over-IP (fast, requires root on vulnbox)
     # Connects to a PCAP-over-IP server, such as pcap-broker to read PCAP data.
-    #command: -r /dev/stdin
-    #restart: on-failure
-    #depends_on:
-    #  - pcap-broker
-    #environment:
-    #  - PCAP_LOG=yes
-    #  - PCAP_OVER_IP=pcap-broker:4242
+    command: -r /dev/stdin
+    restart: on-failure
+    depends_on:
+      - pcap-broker
+    environment:
+      - PCAP_LOG=yes
+      - PCAP_OVER_IP=pcap-broker:4242
 
   webapp:
     build: ./webapp
@@ -46,7 +46,7 @@ services:
       # Only needed for pcap download
       - "./output_suricata:/output_suricata:rw"
     ports:
-      - 127.0.0.1:8000:8000
+      - 8080:8000
     env_file:
       - .env
     environment:
@@ -66,7 +66,7 @@ services:
       - POSTGRES_PASSWORD=unsecure_password
       - POSTGRES_DATABASE=shovel
     ports:
-      - 127.0.0.1:8001:3000
+      - 3000:3000
     env_file:
       - .env
 
@@ -79,23 +79,23 @@ services:
       - POSTGRES_USER=shovel
       - POSTGRES_PASSWORD=unsecure_password
 
-  #pcap-broker:
-  #  container_name: pcap-broker
-  #  build:
-  #    context: .
-  #    dockerfile_inline: |
-  #      FROM golang:alpine
-  #      RUN apk add --no-cache build-base libpcap-dev openssh-client tcpdump
-  #      RUN go install github.com/fox-it/pcap-broker@latest
-  #      ENTRYPOINT ["pcap-broker"]
-  #  restart: on-failure
-  #  volumes:
-  #    - "~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro"
-  #  environment:
-  #    PCAP_COMMAND: |-
-  #        ssh root@vulnbox -oStrictHostKeyChecking=no
-  #        tcpdump -U --immediate-mode -ni game -s 65535 -w - not tcp port 22
-  #    LISTEN_ADDRESS: 0.0.0.0:4242
+  pcap-broker:
+    container_name: pcap-broker
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM golang:alpine
+        RUN apk add --no-cache build-base libpcap-dev openssh-client tcpdump
+        RUN go install github.com/fox-it/pcap-broker@latest
+        ENTRYPOINT ["pcap-broker"]
+    restart: on-failure
+    volumes:
+      - "~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro"
+    environment:
+      PCAP_COMMAND: |-
+          ssh root@vulnbox -oStrictHostKeyChecking=no
+          tcpdump -U --immediate-mode -ni wg0 -s 65535 -w - not tcp port 22
+      LISTEN_ADDRESS: 0.0.0.0:4242
 
 volumes:
   grafana-storage: {}
